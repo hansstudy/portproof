@@ -326,7 +326,7 @@ jobs:
           # Resolve `powershell` exactly as a command run from this shell will,
           # start it, and ask it what it is.
           $exe = (Get-Command powershell -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-          $child = & $exe -NoProfile -NonInteractive -Command '"{0}|{1}" -f $PSVersionTable.PSVersion.Major, $PSVersionTable.PSEdition'
+          $child = & $exe -NoProfile -NonInteractive -Command '''{0}|{1}'' -f $PSVersionTable.PSVersion.Major, $PSVersionTable.PSEdition'
           Write-Host "'powershell' resolves to $exe and reports $child"
           if ($child -ne '5|Desktop') {
             Write-Host "::error::'powershell' on this runner resolves to $exe, which reports $child, not 5|Desktop."
@@ -387,7 +387,7 @@ jobs:
             exit 1
           }
           $exe = (Get-Command powershell -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-          $child = & $exe -NoProfile -NonInteractive -Command '"{0}|{1}" -f $PSVersionTable.PSVersion.Major, $PSVersionTable.PSEdition'
+          $child = & $exe -NoProfile -NonInteractive -Command '''{0}|{1}'' -f $PSVersionTable.PSVersion.Major, $PSVersionTable.PSEdition'
           Write-Host "'powershell' resolves to $exe and reports $child"
           if ($child -ne '5|Desktop') {
             Write-Host "::error::'powershell' on this runner resolves to $exe, which reports $child, not 5|Desktop."
