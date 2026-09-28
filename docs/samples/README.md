@@ -34,4 +34,7 @@ The profile was designed to show a mix of outcomes:
 
 ## run.gif
 
-Not provided. No terminal recording tool was available during sample generation.
+A looping animation of a separate lab run against loopback listeners (127.0.0.2 and 127.0.0.3),
+also with -NoOperator, replaying the real captured console output line by line: the command typed,
+then the run header, then the summary and exit code. It is not a screen recording - the frames are
+rendered from the same console text a run produces, so nothing in it is reconstructed or invented.

@@ -45,6 +45,23 @@ Start-Process .\out\portproof-report.html
 Demo recording: [`docs/samples/run.gif`](docs/samples/run.gif). Sample console output:
 [`docs/samples/console.txt`](docs/samples/console.txt).
 
+## Screenshots
+
+All of these are genuine runs against loopback listeners (127.0.0.2 / 127.0.0.3), captured with
+`-NoOperator` so the operator fields read "redacted".
+
+![Console output of a run against loopback listeners](docs/screenshots/console-run.png)
+*A run against a lab profile, writing an HTML/CSV/JSON report.*
+
+![HTML report, notice and matrix](docs/samples/matrix.png)
+*The report's authorized-use notice and pass/fail matrix.*
+
+![-DryRun output listing what would run](docs/screenshots/dry-run.png)
+*`-DryRun` against the same profile: nothing is resolved or sent.*
+
+![The safety gate refusing a link-local target before any probe is sent](docs/screenshots/refused-address.png)
+*A link-local target refused by the safety gate before resolution or probing.*
+
 ## Install
 
 Download `PortProof.ps1` from the
