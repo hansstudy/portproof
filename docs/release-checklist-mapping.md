@@ -13,6 +13,23 @@ status. `G24-authorized-use` no longer needs a separate call-out: the Maintainer
 clause wording on 2026-09-26 (see "Decisions recorded" below), so its remaining work is the same
 kind of release-time/evidence-recording action as the other gates below.
 
+## Release order
+
+1. **Prerelease `v1.0.0-rc.1`** (`docs/releases/v1.0.0-rc.1/release-evidence.json`).
+   `release.yml` builds, tests, publishes the SBOM, `SHA256SUMS` and the build attestation on a
+   GitHub Release marked as a prerelease, and starts no channel. `G11`, `G16` and `G25` are N/A
+   for a prerelease, with the checklist's fixed wording; every other gate still needs `pass`
+   (or its ordinary N/A, for `G18` and `G23`). `CHANGELOG.md` needs a dated `1.0.0-rc.1` section,
+   because step 7 takes the release notes from the section matching the tag's version.
+2. **Final `v1.0.0`** (`docs/releases/v1.0.0/release-evidence.json`), re-recorded against the
+   live landing page and the published release. Step 0 rejects evidence whose `tag`/`version` do
+   not match, so the prerelease file is never copied forward.
+
+`G20`, `G21` and `G24` name the landing page as one of their surfaces, so each needs the live
+page as well as the README.
+
+## Gate table
+
 | Gate id | Tags | Applies to `["mod","prod"]` | Planned status | Evidence path | Owner |
 |---|---|---|---|---|---|
 | G01-security-review | all | yes | pass | `docs/security-review.md` (independent pre-release security review, closed) | Maintainer |

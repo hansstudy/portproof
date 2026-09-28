@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "tool": "portproof",
+  "version": "1.0.0-rc.1",
+  "tag": "v1.0.0-rc.1",
+  "artifact_kinds": ["mod", "prod"],
+  "checklist_version": 3,
+  "recorded_by": "hansstudy",
+  "recorded_at": "2026-09-28T02:13:05Z",
+  "results": [
+    {
+      "id": "G01-security-review",
+      "status": "pass",
+      "evidence": "docs/security-review.md - independent pre-release security review, 1 MAJOR/3 MINOR/8 NOTE, every finding closed on independent closure verification; dist/PortProof.ps1 at sha256 5671c4861918898a16b752ac8cb7a8475b155cfd5b15f057203e39e0f9560e34, re-confirmed on 2026-09-28 as byte-identical to a fresh build from src/ (build/Build-PortProof.ps1, exit 0, tree unchanged)"
+    },
+    {
+      "id": "G02-secret-scan",
+      "status": "pass",
+      "evidence": "gitleaks 8.30.1 (release zip SHA-256 verified against the upstream checksums file) run as `gitleaks detect --source . --log-opts=\"--all\" --no-banner --exit-code 1` on 2026-09-28 at main 2f5d7de: 2 commits scanned (all refs), 'no leaks found', exit 0. GitHub API repos/hansstudy/portproof security_and_analysis on 2026-09-28: secret_scanning enabled, secret_scanning_push_protection enabled. CI's secret-scan job (gitleaks-action) is green on every push but scans only the pushed range, so the full-history run above is the gate evidence."
+    },
+    {
+      "id": "G03-threat-model",
+      "status": "pass",
+      "evidence": "docs/threat-model.md (present, documents PortProof's security posture and residual risks)"
+    },
+    {
+      "id": "G04-dependency-alerts",
+      "status": "pass",
+      "evidence": "gh api repos/hansstudy/portproof/dependabot/alerts?state=open on 2026-09-28: 0 open alerts of any severity (so 0 High/Critical); Dependabot vulnerability alerts enabled (GET repos/.../vulnerability-alerts = 204). The tool has zero external dependencies (no RequiredModules)."
+    },
+    {
+      "id": "G05-dependency-pinning",
+      "status": "pass",
+      "evidence": "grep -rhoE 'uses:[[:space:]]*[^[:space:]]+' .github/workflows/ | grep -vE '@[0-9a-f]{40}$' returns empty at 2f5d7de (every uses: pinned to a 40-hex commit SHA); `grep -c RequiredModules PortProof.psd1` = 0 (no module dependency to pin)"
+    },
+    {
+      "id": "G06-content-provenance",
+      "status": "pass",
+      "evidence": "docs/content-provenance.md (present, names third-party source classes, licences and usage)"
+    },
+    {
+      "id": "G07-least-privilege",
+      "status": "pass",
+      "evidence": "README.md 'Requirements / least privilege' section names the exact rights needed (none beyond outbound TCP/UDP/ICMP from the operator host) and why"
+    },
+    {
+      "id": "G08-redaction",
+      "status": "pass",
+      "evidence": "README.md 'Output sensitivity' section documents -NoOperator and the no-general-redaction limitation; re-check on 2026-09-28 of the tracked docs/samples/{console.txt,sample-report.html,sample-results.csv,sample-results.json} found only 127.0.0.1-127.0.0.3 loopback addresses and no credential/PII tokens. Any sample or screenshot added after 2026-09-28 needs its own pass before tagging."
+    },
+    {
+      "id": "G09-readme-complete",
+      "status": "fail",
+      "reason": "Pending: README.md matches the tier-1 shape, but no transcript of the install steps (download PortProof.ps1 from the release, verify, run) on a clean machine/profile has been recorded. Owner: Maintainer."
+    },
+    {
+      "id": "G10-changelog-entry",
+      "status": "fail",
+      "reason": "Pending: CHANGELOG.md has '## [1.0.0] - 2026-09-25' but no dated '## [1.0.0-rc.1] - YYYY-MM-DD' section. release.yml step 7 builds the GitHub Release notes from the section matching the tag's version, so the release would also fail there without it. Owner: Maintainer, on release day."
+    },
+    {
+      "id": "G11-semver-consistent",
+      "status": "na",
+      "reason": "Prerelease tag: no channel is published and the landing page is not updated for a prerelease, per the prerelease policy; there is no channel evidence to check version consistency against."
+    },
+    {
+      "id": "G12-screenshots-demo",
+      "status": "fail",
+      "reason": "Pending: docs/samples/matrix.png, console.txt and the sample HTML/CSV/JSON exist and are lab-data-only, but the demo GIF (docs/samples/run.gif, linked from README.md) does not exist yet (docs/samples/README.md records 'run.gif: Not provided'). Screenshots now being added still need the lab-data-only review. Owner: Maintainer."
+    },
+    {
+      "id": "G13-docs-links",
+      "status": "fail",
+      "reason": "Pending: README.md links https://hans.study/tools/portproof/, but that URL returns 404 on 2026-09-28, so the docs link does not resolve and the landing page cannot link back to the repo yet. This gate has no prerelease relaxation. Owner: site (landing page), then Maintainer to record."
+    },
+    {
+      "id": "G14-ci-built",
+      "status": "fail",
+      "reason": "Pending: no tag has been pushed and release.yml has not run; there is no Actions run to cite yet. Owner: automated (release.yml on the tag push), recorded by the Maintainer."
+    },
+    {
+      "id": "G15-sbom-published",
+      "status": "fail",
+      "reason": "Pending: release.yml step 4 generates portproof-1.0.0-rc.1.cdx.json from PortProof.psd1 (sbom.generator psd1) and attaches it to the GitHub Release; not yet run. Owner: automated (release.yml), recorded by the Maintainer."
+    },
+    {
+      "id": "G16-sha256sums",
+      "status": "na",
+      "reason": "Prerelease tag: no channel is published and the landing page is not updated for a prerelease, per the prerelease policy; SHA256SUMS is verified against the GitHub Release alone, with no landing-page value to check it against."
+    },
+    {
+      "id": "G17-build-attestation",
+      "status": "fail",
+      "reason": "Pending: release.yml step 6 produces the Sigstore build-provenance attestation on the tag push; not yet run, so there is nothing to verify with gh attestation verify. Owner: automated (release.yml), recorded by the Maintainer."
+    },
+    {
+      "id": "G18-authenticode",
+      "status": "na",
+      "reason": "No code-signing certificate held; deferred until a tool shows traction. Release ships Sigstore attestation, SHA256SUMS and verify instructions instead."
+    },
+    {
+      "id": "G19-clean-install",
+      "status": "fail",
+      "reason": "Pending: no clean-VM (or clean-profile) transcript of PortProof.ps1 -Version and a -DryRun run, plus the documented removal, has been captured. Requires a clean Windows machine/profile. Owner: Maintainer."
+    },
+    {
+      "id": "G20-telemetry-policy",
+      "status": "fail",
+      "reason": "Pending: README.md 'Telemetry' states the tool collects no telemetry and transmits nothing about its use, but the gate also requires the statement on the landing page, which is not live. Owner: site."
+    },
+    {
+      "id": "G21-support-statement",
+      "status": "fail",
+      "reason": "Pending: README.md 'Support' states 'There is no SLA.' with the engagement link, but the gate also requires the statement on the landing page, which is not live. Owner: site."
+    },
+    {
+      "id": "G22-licence-trademark",
+      "status": "pass",
+      "evidence": "LICENSE (Apache-2.0), NOTICE (Microsoft trademark disclaimer), PortProof.psd1, README.md and SECURITY.md all name the copyright holder as Hans Study; README.md 'Trademark disclaimer' and 'Third-party content' sections present; SECURITY.md and README.md name bugs@hans.study alongside GitHub private vulnerability reporting"
+    },
+    {
+      "id": "G23-privacy-disclosure",
+      "status": "na",
+      "reason": "The tool transmits nothing anywhere: no telemetry, no HTTP/network calls beyond the TCP/UDP/ICMP probes the loaded profile explicitly declares (README.md Telemetry section; tests/Static/Test-NoOutbound.ps1 statically confirms no outbound-call tokens in src/ or dist/)."
+    },
+    {
+      "id": "G24-authorized-use",
+      "status": "fail",
+      "reason": "Pending: the approved clause is present, byte-identical, in README.md 'Authorized use', src/05-Contract.ps1 and the startup/help text in src/00-Header.ps1 (and every report header), but the gate requires it in the landing page fine print too, which is not live. Owner: site."
+    },
+    {
+      "id": "G25-landing-page-live",
+      "status": "na",
+      "reason": "Prerelease tag: no channel is published and the landing page is not updated for a prerelease, per the prerelease policy; the tool's existing landing page (if any) is unchanged by this release."
+    },
+    {
+      "id": "G26-release-blog-post",
+      "status": "fail",
+      "reason": "Pending: no release post has been published and this is not a patch release, so the 'patch release - no post' outcome does not apply. This gate has no prerelease relaxation. Owner: Maintainer (post), site (publishing)."
+    },
+    {
+      "id": "G27-cross-post-preflight",
+      "status": "fail",
+      "reason": "Pending: no dated sidebar-reading record exists for any target community, and no decision not to cross-post has been recorded. Owner: Maintainer."
+    }
+  ]
+}
