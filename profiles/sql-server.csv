@@ -1,0 +1,6 @@
+Source,Target,Port,Protocol,Required,Service,Notes
+%CLIENT%,%SQL%,1433,TCP,yes,SQL Server Database Engine (default instance),
+%CLIENT%,%SQL%,1434,UDP,no,SQL Server Browser service,UDP cannot be proven open by an empty datagram; see Open|Filtered
+%CLIENT%,%SQL%,1434,TCP,no,Dedicated Admin Connection (default instance),Remote DAC connections are disabled by default; not proven unless an administrator has enabled remote DAC
+%CLIENT%,%SQL%,4022,TCP,no,Service Broker,Service Broker has no fixed default port; this row assumes the conventional configuration and is only open when Service Broker is configured
+%CLIENT%,%SQL%,135,TCP,no,RPC (Configuration Manager/WMI/MSDTC/Transact-SQL debugger),Dynamic RPC (the ephemeral high port assigned behind the endpoint mapper) is not proven by this profile; v1 has no port-range syntax

@@ -1,0 +1,22 @@
+PortProof
+Copyright 2026 Hans Study
+
+This product is licensed under the Apache License, Version 2.0. See the LICENSE file for the
+full licence text.
+
+Microsoft, Windows Server, Active Directory and SQL Server are trademarks of their respective
+owners. This project is independent and is not affiliated with, endorsed by, or supported by
+those owners.
+
+Third-party attributions
+-------------------------
+
+None. All material in this repository was authored by the copyright holder.
+
+<!--
+  If this repo carries any third-party content covered by docs/content-provenance.md (for
+  example, verbatim public-domain STIG/NIST/NSA/CISA text, or a third-party OSS dependency),
+  replace the "None." line above with one attribution entry per source, naming the source, its
+  licence, and the section(s) of this repo it appears in. CIS Benchmark material never appears
+  here as anything other than an ID/section cross-reference - see docs/content-provenance.md.
+-->

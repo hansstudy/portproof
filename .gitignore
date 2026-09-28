@@ -1,0 +1,29 @@
+# PowerShell overlay - replaces the base .gitignore at instantiation.
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Build / test output
+# dist/PortProof.ps1 is committed and drift-gated (AC2, AC32) - dist/ is deliberately NOT
+# ignored here.
+out/
+*.log
+TestResults/
+tests/TestResults/
+*.trx
+coverage.xml
+
+# Module packaging scratch
+*.nupkg
+
+# Local secrets / env - never committed
+.env
+.env.*
+!.env.example

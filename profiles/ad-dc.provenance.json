@@ -1,0 +1,46 @@
+{
+  "profile": "ad-dc",
+  "vendor": "Microsoft",
+  "product": "Windows Server Active Directory Domain Services (AD DS)",
+  "product_version": "Windows Server, currently supported versions (client/DC ports have been stable since Windows Server 2008 R2)",
+  "sources": [
+    {
+      "id": 1,
+      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/service-overview-and-network-port-requirements",
+      "title": "Service overview and network port requirements for Windows",
+      "retrieved": "2026-09-25",
+      "archived": false
+    },
+    {
+      "id": 2,
+      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/config-firewall-for-ad-domains-and-trusts",
+      "title": "How to configure a firewall for Active Directory domains and trusts",
+      "retrieved": "2026-09-25",
+      "archived": false
+    },
+    {
+      "id": 3,
+      "url": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-r2-and-2008/dd772723(v=ws.10)",
+      "title": "Active Directory and Active Directory Domain Services Port Requirements",
+      "retrieved": "2026-09-25",
+      "archived": true
+    }
+  ],
+  "row_numbering": "CSV convention: the header line is row 1, so the first data row is row 2. See docs/profiles/schema.md section 6 for how this maps to the JSON file's own 1-based rows[] index.",
+  "rows": [
+    { "row": 2, "sources": [1, 2, 3] },
+    { "row": 3, "sources": [1, 2, 3] },
+    { "row": 4, "sources": [1, 2, 3] },
+    { "row": 5, "sources": [1, 2, 3] },
+    { "row": 6, "sources": [1, 2, 3] },
+    { "row": 7, "sources": [1, 2, 3] },
+    { "row": 8, "sources": [1, 2, 3] },
+    { "row": 9, "sources": [1, 2, 3] },
+    { "row": 10, "sources": [1, 2, 3] },
+    { "row": 11, "sources": [1, 2, 3] },
+    { "row": 12, "sources": [1, 2, 3] },
+    { "row": 13, "sources": [1, 2, 3] },
+    { "row": 14, "sources": [1, 2, 3] },
+    { "row": 15, "sources": [1, 2, 3] }
+  ]
+}

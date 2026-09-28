@@ -1,0 +1,74 @@
+file,expected_error_id,names
+corpus/csv-protocol-invalid-icmp.csv,Profile.Domain,Protocol ICMP is not TCP or UDP
+corpus/csv-protocol-invalid-empty.csv,Profile.Domain,Protocol empty
+corpus/csv-protocol-invalid-numeric.csv,Profile.Domain,Protocol numeric (6)
+corpus/csv-port-range.csv,Profile.Domain,"Port is a range, no ranges permitted"
+corpus/csv-port-list.csv,Profile.Domain,Port is a comma list
+corpus/csv-port-wildcard.csv,Profile.Domain,Port is a wildcard
+corpus/csv-port-zero.csv,Profile.Domain,Port 0 out of 1..65535
+corpus/csv-port-65536.csv,Profile.Domain,Port 65536 out of 1..65535
+corpus/csv-port-leadingzero.csv,Profile.Domain,Port has a leading zero
+corpus/csv-required-true.csv,Profile.Domain,Required TRUE not yes/no
+corpus/csv-required-1.csv,Profile.Domain,Required 1 not yes/no
+corpus/csv-required-y.csv,Profile.Domain,Required y not yes/no
+corpus/csv-required-empty.csv,Profile.Domain,Required empty
+corpus/csv-source-empty.csv,Profile.Domain,Source empty
+corpus/csv-source-invalid.csv,Profile.Domain,Source fails target grammar
+corpus/csv-target-empty.csv,Profile.Domain,Target empty
+corpus/csv-target-invalid.csv,Profile.Domain,Target fails target grammar
+corpus/csv-syntax-unterminated-quote.csv,Profile.CsvSyntax,EOF inside quotes
+corpus/csv-syntax-stray-quote.csv,Profile.CsvSyntax,a quote character inside an unquoted field
+corpus/csv-syntax-ragged-record.csv,Profile.CsvSyntax,record has fewer fields than the header
+corpus/csv-syntax-blank-interior-record.csv,Profile.CsvSyntax,interior record every field empty
+corpus/csv-syntax-header-only.csv,Profile.Empty,zero data records
+corpus/csv-syntax-duplicate-header.csv,Profile.DuplicateColumn,Required column listed twice
+corpus/csv-syntax-missing-column.csv,Profile.MissingColumn,Protocol column missing
+corpus/json-protocol-invalid.json,Profile.Domain,protocol ICMP is not TCP/UDP
+corpus/json-port-string.json,Profile.Domain,"port given as a JSON string, not an integer token"
+corpus/json-port-fraction.json,Profile.Domain,"port has a fraction, not a bare integer token"
+corpus/json-port-negative.json,Profile.Domain,"port has a sign, not a bare integer token"
+corpus/json-required-boolean.json,Profile.Domain,"required is JSON true, not the string yes/no"
+corpus/json-required-invalid-string.json,Profile.Domain,required is a string outside yes/no
+corpus/json-source-empty.json,Profile.Domain,source is an empty string
+corpus/json-target-invalid.json,Profile.Domain,target fails target grammar
+corpus/json-unknown-top-key.json,Profile.UnknownKey,extra top-level key
+corpus/json-unknown-row-key.json,Profile.UnknownKey,extra row key
+corpus/json-duplicate-key.json,Profile.JsonDuplicateKey,port given twice in one row object
+corpus/json-case-duplicate-key.json,Profile.JsonDuplicateKey,Port and port differ only by case
+corpus/json-trailing-comma.json,Profile.JsonSyntax,trailing comma after the last row
+corpus/json-comment.json,Profile.JsonSyntax,JSON does not allow comments
+corpus/json-port-leadingzero-syntax.json,Profile.JsonSyntax,a leading zero is not a valid JSON number token
+corpus/json-depth-exceeded.json,Profile.JsonDepth,nested arrays exceed MaxJsonDepth (8)
+corpus/json-wrong-schema.json,Profile.Domain,ASSUMPTION: schema id wrong value; DESIGN gives no dedicated id for this field
+corpus/json-missing-rows.json,Profile.MissingColumn,rows key omitted entirely
+corpus/json-empty-rows.json,Profile.Empty,rows is an empty array
+corpus/encoding-invalid-utf8.csv,Profile.Encoding,trailing byte 0xFF is not valid UTF-8
+corpus/encoding-utf16-no-bom.csv,Profile.Encoding,UTF-16LE bytes with no BOM (misread as UTF-8 or later NUL-check fails)
+corpus/encoding-utf32-bom.csv,Profile.Encoding,UTF-32LE BOM sniffed and rejected
+corpus/encoding-nul-byte.csv,Profile.Encoding,a raw NUL byte after otherwise-valid UTF-8 decode
+corpus/csv-duplicate-row.csv,Profile.DuplicateRow,same Source/Target/Port/Protocol as an earlier row
+corpus/json-group-unbound.json,Group.Unbound,no groups entry and no -Set for %CLIENT%
+corpus/json-group-nested.json,Group.Nested,a group value that is itself a %NAME% reference
+corpus/json-group-cidr-no-switch.json,Group.CidrNotAllowed,run with default flags (no -AllowCidr)
+corpus/json-group-cidr-16.json,CapExceeded.Expansion,"/8..32 are all valid prefixes with -AllowCidr, so a /16 (65534 usable addresses) is not CidrTooWide - it is refused arithmetically (E/P > EffectiveCap x ExpansionFactor) before pass 2 ever enumerates a single address"
+corpus/json-group-cidr-31.json,Group.CidrNotAligned,"/31 is a valid prefix (RFC 3021, both addresses usable), not CidrTooWide; this fixture is repurposed rather than moved to a valid fixture, since /31 is the narrowest prefix with a non-empty host mask and so is the sharpest edge case for the alignment check - group value 10.10.5.1/31 has its one host bit set (10.10.5.0/31 would be the aligned pair)"
+corpus/json-group-cidr-7.json,Group.CidrTooWide,"Keeps Group.CidrTooWide covered now that /16 and /31 exercise other ids - /7 is one below the valid floor of 8, exercising the low boundary specifically"
+corpus/json-group-hostbits.json,Group.CidrNotAligned,run with -AllowCidr; host bits set in a /24
+corpus/json-group-ipv6-cidr.json,Group.CidrIPv6,run with -AllowCidr; IPv6 CIDR is refused regardless of prefix
+corpus/json-group-cidr-in-source.json,Group.CidrInSource,run with -AllowCidr; CIDR group referenced from Source
+corpus/json-group-oversize.json,Group.TooLarge,"group value has 8193 comma items, over MaxGroupItems (8192)"
+corpus/json-group-syntax.json,Group.Syntax,group list has an empty item between two commas
+corpus/refused-this-network.csv,RefusedTargetClass,this-network 0.1.2.3
+corpus/refused-broadcast.csv,RefusedTargetClass,limited-broadcast 255.255.255.255
+corpus/refused-multicast-v6.csv,RefusedTargetClass,multicast ff02::1
+corpus/refused-linklocal-v6.csv,RefusedTargetClass,link-local fe80::1
+corpus/refused-mapped-multicast.csv,RefusedTargetClass,IPv4-mapped multicast ::ffff:224.0.0.1
+corpus/hostile-hex-0xffffffff.csv,RefusedTargetClass,"0xffffffff = 255.255.255.255, limited-broadcast"
+corpus/hostile-hex-0xe0000001.csv,RefusedTargetClass,"0xe0000001 = 224.0.0.1, multicast"
+corpus/hostile-hex-dotted-0xff.csv,RefusedTargetClass,"0xff.0xff.0xff.0xff = 255.255.255.255, limited-broadcast"
+corpus/hostile-hex-0x7f1.csv,Profile.Domain,"0x7f.1 = 127.0.0.1, loopback: NOT refused, but non-canonical"
+corpus/hostile-trailing-lf.json,Profile.Domain,"target has a trailing control character (LF), rule 1 -> Invalid"
+corpus/hostile-control-esc-target.csv,Profile.Domain,target contains an ANSI ESC control character
+corpus/hostile-control-lf-target.csv,Profile.Domain,"target has an embedded control character (LF), inside a quoted field so it is content, not a record break"
+corpus/hostile-control-leading-space.csv,Profile.Domain,target has leading whitespace
+corpus/csv-syntax-unquoted-lf.csv,Profile.CsvSyntax,"an UNQUOTED bare LF inside a field ends the record early (ragged row), per DESIGN 7.2"

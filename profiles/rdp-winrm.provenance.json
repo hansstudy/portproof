@@ -1,0 +1,37 @@
+{
+  "profile": "rdp-winrm",
+  "vendor": "Microsoft",
+  "product": "Remote Desktop Services (RDP) and Windows Remote Management (WinRM)",
+  "product_version": "Windows / Windows Server, current versions; WinRM 2.0 default ports",
+  "sources": [
+    {
+      "id": 1,
+      "url": "https://learn.microsoft.com/en-us/windows-server/remote/remote-desktop-services/remotepc/change-listening-port",
+      "title": "Change Remote Desktop listening port on Windows and Windows Server",
+      "retrieved": "2026-09-25",
+      "archived": false
+    },
+    {
+      "id": 2,
+      "url": "https://learn.microsoft.com/en-us/windows/win32/winrm/installation-and-configuration-for-windows-remote-management",
+      "title": "Installation and configuration for Windows Remote Management",
+      "retrieved": "2026-09-25",
+      "archived": false
+    },
+    {
+      "id": 3,
+      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-client/system-management-components/configure-winrm-for-https",
+      "title": "How to configure WinRM for HTTPS",
+      "retrieved": "2026-09-25",
+      "archived": false
+    }
+  ],
+  "row_numbering": "CSV convention: the header line is row 1, so the first data row is row 2. See docs/profiles/schema.md section 6 for how this maps to the JSON file's own 1-based rows[] index.",
+  "rows": [
+    { "row": 2, "sources": [1] },
+    { "row": 3, "sources": [2] },
+    { "row": 4, "sources": [2, 3] },
+    { "row": 5, "sources": [2] },
+    { "row": 6, "sources": [2] }
+  ]
+}

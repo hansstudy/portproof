@@ -1,0 +1,21 @@
+{
+  "schema": "portproof-profile/1",
+  "name": "ad-dc",
+  "version": "2026-09-25",
+  "rows": [
+    { "source": "%CLIENT%", "target": "%DC%", "port": 53, "protocol": "TCP", "required": "yes", "service": "DNS", "notes": "" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 53, "protocol": "UDP", "required": "no", "service": "DNS", "notes": "UDP cannot be proven open by an empty datagram; see Open|Filtered" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 88, "protocol": "TCP", "required": "yes", "service": "Kerberos", "notes": "" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 88, "protocol": "UDP", "required": "no", "service": "Kerberos", "notes": "UDP cannot be proven open by an empty datagram; see Open|Filtered" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 135, "protocol": "TCP", "required": "yes", "service": "RPC Endpoint Mapper", "notes": "Dynamic RPC (the ephemeral high port a service is assigned behind the endpoint mapper) is not proven by this profile; v1 has no port-range syntax" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 389, "protocol": "TCP", "required": "yes", "service": "LDAP", "notes": "" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 389, "protocol": "UDP", "required": "no", "service": "LDAP (DC Locator/ping)", "notes": "UDP cannot be proven open by an empty datagram; see Open|Filtered" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 445, "protocol": "TCP", "required": "yes", "service": "SMB (SYSVOL/NETLOGON)", "notes": "" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 464, "protocol": "TCP", "required": "yes", "service": "Kerberos password change", "notes": "" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 464, "protocol": "UDP", "required": "no", "service": "Kerberos password change", "notes": "UDP cannot be proven open by an empty datagram; see Open|Filtered" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 636, "protocol": "TCP", "required": "no", "service": "LDAP SSL (LDAPS)", "notes": "Requires a server authentication certificate on the DC and is not enabled by default" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 3268, "protocol": "TCP", "required": "no", "service": "Global Catalog", "notes": "Only listens where the domain controller holds the Global Catalog role" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 3269, "protocol": "TCP", "required": "no", "service": "Global Catalog SSL", "notes": "Depends on both the Global Catalog role and an LDAPS certificate" },
+    { "source": "%CLIENT%", "target": "%DC%", "port": 123, "protocol": "UDP", "required": "no", "service": "W32Time (Windows Time/NTP)", "notes": "UDP cannot be proven open by an empty datagram; see Open|Filtered" }
+  ]
+}

@@ -1,0 +1,17 @@
+# PortProof build part list. Read by build/Build-PortProof.ps1 and by the test harness.
+# One path per line, relative to the repository root, '/' separators, in concatenation order.
+# Blank lines and lines starting with '#' are skipped. Every src/*.ps1 must be listed exactly once.
+src/00-Header.ps1
+src/05-Contract.ps1
+src/10-Parser.ps1
+src/20-Expander.ps1
+src/30-Resolver.ps1
+src/35-Gate.ps1
+src/40-Scheduler.ps1
+src/50-Probe.Tcp.ps1
+src/55-Probe.Udp.ps1
+src/58-Probe.Icmp.ps1
+src/70-Render.Html.ps1
+src/72-Render.Csv.ps1
+src/74-Render.Json.ps1
+src/90-Main.ps1

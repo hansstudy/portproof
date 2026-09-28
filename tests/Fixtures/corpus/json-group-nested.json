@@ -1,0 +1,2 @@
+{ "schema": "portproof-profile/1", "name": "x", "groups": { "FOO": "%BAR%" }, "rows": [
+  { "source": "%FOO%", "target": "10.0.0.5", "port": 443, "protocol": "TCP", "required": "yes" } ] }

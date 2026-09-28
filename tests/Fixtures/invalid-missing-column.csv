@@ -1,0 +1,2 @@
+Source,Target,Port,Protocol
+client,dc01.corp.example,389,TCP

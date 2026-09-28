@@ -1,0 +1,2 @@
+{ "schema": "portproof-profile/1", "name": "x", "rows": [
+  { "source": "client", "target": "dc01.corp.example", "port": 0389, "protocol": "TCP", "required": "yes" } ] }

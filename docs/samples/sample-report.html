@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<title>PortProof Report</title>
+<style>
+body { font-family: Arial, Helvetica, sans-serif; margin: 1.5em; color: #111111; background: #ffffff; }
+h1, h2 { color: #111111; }
+table { border-collapse: collapse; margin-bottom: 1.5em; }
+th, td { border: 1px solid #999999; padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: #eeeeee; }
+td.ok { background: #d4edda; }
+td.bad { background: #f8d7da; }
+td.warn { background: #fff3cd; }
+footer { font-size: 0.9em; color: #555555; }
+</style>
+</head>
+<body>
+<h1>PortProof Report</h1>
+<section id="notice">
+<h2>Authorized use</h2>
+<p>Run this only against systems you own or have written authorisation to assess. It sends TCP connects, UDP datagrams and (with -Icmp) ICMP echoes to the hosts and ports the profile and -Set declare, plus DNS lookups for host names. It does not exploit or log in to anything and reads only what classifies each port. You are responsible for handling that output and for having permission to run it.</p>
+</section>
+<section id="run-header">
+<h2>Run header</h2>
+<table>
+<tbody>
+<tr><td>ToolVersion</td><td>1.0.0</td></tr>
+<tr><td>ProfileName</td><td>lab-profile</td></tr>
+<tr><td>ProfileVersion</td><td></td></tr>
+<tr><td>ProfileSha256</td><td>89a6bb6c1d6547ec9a11d1fdd8f4d78d3b4e940ecab2f42a97c58d72f9796361</td></tr>
+<tr><td>RunId</td><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td></tr>
+<tr><td>StartedUtc</td><td>2026-09-26T18:37:50.179Z</td></tr>
+<tr><td>StartedLocal</td><td>2026-09-26T18:37:50.179Z</td></tr>
+<tr><td>OperatorUser</td><td>redacted</td></tr>
+<tr><td>OperatorHost</td><td>redacted</td></tr>
+<tr><td>ProbeCount</td><td>8</td></tr>
+<tr><td>Flags.AllowLarge</td><td>false</td></tr>
+<tr><td>Flags.AllowCidr</td><td>false</td></tr>
+<tr><td>Flags.Icmp</td><td>false</td></tr>
+<tr><td>Flags.DryRun</td><td>false</td></tr>
+<tr><td>Flags.NoOperator</td><td>true</td></tr>
+<tr><td>Flags.Force</td><td>false</td></tr>
+<tr><td>Flags.Quiet</td><td>false</td></tr>
+<tr><td>Flags.Ceiling</td><td>1024</td></tr>
+<tr><td>Flags.EffectiveCap</td><td>1024</td></tr>
+<tr><td>Flags.TimeoutMs</td><td>2000</td></tr>
+<tr><td>Flags.Concurrency</td><td>16</td></tr>
+<tr><td>Flags.MaxProbesPerSecond</td><td>50</td></tr>
+<tr><td>Flags.JitterMs</td><td>250</td></tr>
+<tr><td>Flags.GroupOverrides</td><td></td></tr>
+<tr><td>Flags.ExecutionPath</td><td>Runspace</td></tr>
+<tr><td>IgnoredColumns</td><td></td></tr>
+<tr><td>AuthorizedUseNotice</td><td>Run this only against systems you own or have written authorisation to assess. It sends TCP connects, UDP datagrams and (with -Icmp) ICMP echoes to the hosts and ports the profile and -Set declare, plus DNS lookups for host names. It does not exploit or log in to anything and reads only what classifies each port. You are responsible for handling that output and for having permission to run it.</td></tr>
+<tr><td>OriginNote</td><td>All probes were sent from redacted; Source values are labels from the profile.</td></tr>
+<tr><td>ProbeCountBasis</td><td>admitted</td></tr>
+<tr><td>WorstCaseSeconds</td><td>13</td></tr>
+</tbody>
+</table>
+</section>
+<section id="matrix">
+<h2>Matrix</h2>
+<table>
+<thead>
+<tr><th></th><th>HTTP</th><th>HTTPS</th><th>DNS</th><th>MySQL</th><th>PostgreSQL</th><th>SMTP</th><th>FTP</th><th>NTP</th></tr>
+</thead>
+<tbody>
+<tr><th>127.0.0.1</th><td class="ok">1/1 pass</td><td class="ok">1/1 pass</td><td class="warn">0/1 pass</td><td class="ok">1/1 pass</td><td class="bad">0/1 pass</td><td class="bad">0/1 pass</td><td class="bad">0/1 pass</td><td class="warn">0/1 pass</td></tr>
+</tbody>
+</table>
+</section>
+<section id="detail">
+<h2>Detail</h2>
+<table>
+<thead>
+<tr><th>RunId</th><th>Timestamp</th><th>SourceName</th><th>SourceIp</th><th>TargetName</th><th>TargetIp</th><th>ResolvedAddresses</th><th>Port</th><th>Protocol</th><th>Service</th><th>Required</th><th>Outcome</th><th>State</th><th>LatencyMs</th><th>Error</th><th>ProfileRow</th><th>SourceGroup</th><th>TargetGroup</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:50.886Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.2</td><td>127.0.0.2</td><td>127.0.0.2</td><td>33945</td><td>TCP</td><td>HTTP</td><td>yes</td><td>Pass</td><td>Open</td><td>15</td><td>None</td><td>2</td><td></td><td></td><td>Open listener</td></tr>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:51.068Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.2</td><td>127.0.0.2</td><td>127.0.0.2</td><td>443</td><td>TCP</td><td>HTTPS</td><td>yes</td><td>Pass</td><td>Open</td><td>1</td><td>None</td><td>3</td><td></td><td></td><td>Test port for HTTPS service</td></tr>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:51.091Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.2</td><td>127.0.0.2</td><td>127.0.0.2</td><td>53</td><td>TCP</td><td>DNS</td><td>yes</td><td>Inconclusive</td><td></td><td>5</td><td>LocalPolicy</td><td>4</td><td></td><td></td><td>Will show LocalPolicy error</td></tr>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:50.874Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.3</td><td>127.0.0.3</td><td>127.0.0.3</td><td>33946</td><td>TCP</td><td>MySQL</td><td>yes</td><td>Pass</td><td>Open</td><td>14</td><td>None</td><td>5</td><td></td><td></td><td>Open listener</td></tr>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:50.997Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.3</td><td>127.0.0.3</td><td>127.0.0.3</td><td>5432</td><td>TCP</td><td>PostgreSQL</td><td>yes</td><td>Fail</td><td>Unreachable</td><td>2000</td><td>Timeout</td><td>6</td><td></td><td></td><td>Closed port</td></tr>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:51.164Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.2</td><td>127.0.0.2</td><td>127.0.0.2</td><td>25</td><td>TCP</td><td>SMTP</td><td>yes</td><td>Fail</td><td>Unreachable</td><td>2000</td><td>Timeout</td><td>7</td><td></td><td></td><td>Closed port</td></tr>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:53.206Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.3</td><td>127.0.0.3</td><td>127.0.0.3</td><td>21</td><td>TCP</td><td>FTP</td><td>no</td><td>Fail</td><td>Unreachable</td><td>2000</td><td>Timeout</td><td>8</td><td></td><td></td><td>Closed port</td></tr>
+<tr><td>fa52b5c5-8d79-4805-9c85-f776ce242ea2</td><td>2026-09-26T18:37:53.392Z</td><td>127.0.0.1</td><td>127.0.0.1</td><td>127.0.0.2</td><td>127.0.0.2</td><td>127.0.0.2</td><td>123</td><td>UDP</td><td>NTP</td><td>no</td><td>Inconclusive</td><td>Open|Filtered</td><td>2017</td><td>NoResponse</td><td>9</td><td></td><td></td><td>Closed port</td></tr>
+</tbody>
+</table>
+</section>
+<section id="legend">
+<h2>Legend</h2>
+<p>ok: every probe in the cell passed. warn: at least one probe was inconclusive and none failed - for example Open|Filtered, where a UDP port received no reply, which happens whether the port is open or a firewall silently drops the probe; PortProof cannot tell those two apart from a missing reply alone. bad: at least one probe failed. Each cell also carries its own pass count as text, so the result does not depend on colour alone.</p>
+</section>
+<footer>
+<p>All probes were sent from redacted; Source values are labels from the profile.</p>
+</footer>
+</body>
+</html>

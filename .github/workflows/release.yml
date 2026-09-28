@@ -1,0 +1,819 @@
+# template-version: 4
+# ---------------------------------------------------------------------------
+# release.yml - tag-triggered release pipeline.
+#
+# Copied verbatim into each tool repo at .github/workflows/release.yml.
+# Self-contained per repo - there is no cross-repo reusable workflow.
+#
+# Configuration is the committed file .github/release-config.yml. A
+# tag-triggered workflow cannot take dispatch inputs, so the input surface is a
+# file that is reviewable in a PR.
+#
+# PINNING. Every action reference in this file is a full 40-hex commit SHA with
+# its release tag in a trailing comment, per the dependency-pinning rule and AC4b.
+# SHAs were resolved
+# on 2026-09-14 (setup-go on 2026-09-24) from the GitHub tags API; those
+# responses are the citation:
+#   actions/checkout                 https://api.github.com/repos/actions/checkout/tags
+#   actions/setup-node               https://api.github.com/repos/actions/setup-node/tags
+#   actions/setup-python             https://api.github.com/repos/actions/setup-python/tags
+#   actions/setup-go                 https://api.github.com/repos/actions/setup-go/tags
+#   actions/attest-build-provenance  https://api.github.com/repos/actions/attest-build-provenance/tags
+# Dependabot (github-actions ecosystem) bumps the SHA and the comment together.
+# ---------------------------------------------------------------------------
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Least privilege: nothing at workflow level, granted per job.
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RELEASE_CONFIG: .github/release-config.yml
+  # Optional repository variable. Actions does not inject `vars` into `env`
+  # automatically, so the override the README documents only works if it is
+  # wired here. Unset resolves to an empty string,
+  # which the step-0 search list skips.
+  RELEASE_CHECKLIST_PATH: ${{ vars.RELEASE_CHECKLIST_PATH }}
+
+jobs:
+  release:
+    name: build, attest, publish the GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write       # create the release, upload assets
+      id-token: write       # OIDC identity for the Sigstore attestation
+      attestations: write   # write the provenance attestation
+    env:
+      # Go row: a release build that would modify go.mod
+      # or go.sum fails rather than resolving something new. It also stops a
+      # repo carrying a vendor/ directory from silently defaulting to
+      # -mod=vendor. Harmless for every other runtime.
+      GOFLAGS: -mod=readonly
+      # Pinned by exact version, never @latest.
+      # v1.12.0 read 2026-09-24 from
+      # https://api.github.com/repos/CycloneDX/cyclonedx-gomod/releases
+      # (published 2026-08-22); its go.mod declares `go 1.26.0`, which is why
+      # the generator gets its own toolchain in step 1b. Bump by hand, together
+      # with GO_FOR_SBOM_TOOL: Dependabot's github-actions ecosystem does not
+      # see a Go module reference.
+      CYCLONEDX_GOMOD_VERSION: v1.12.0
+    outputs:
+      version: ${{ steps.ident.outputs.version }}
+      tag: ${{ steps.ident.outputs.tag }}
+      slug: ${{ steps.cfg.outputs.tool_slug }}
+      artifacts: ${{ steps.build.outputs.artifacts }}
+      sbom_path: ${{ steps.sbom.outputs.sbom_path }}
+      sha256sums_path: ${{ steps.sums.outputs.sha256sums_path }}
+      release_url: ${{ steps.publish.outputs.release_url }}
+      publish_psgallery: ${{ steps.cfg.outputs.publish_psgallery }}
+      publish_scoop: ${{ steps.cfg.outputs.publish_scoop }}
+      publish_winget: ${{ steps.cfg.outputs.publish_winget }}
+      publish_elgato: ${{ steps.cfg.outputs.publish_elgato_pack }}
+      publish_skill: ${{ steps.cfg.outputs.publish_claude_validate }}
+
+    steps:
+      # -- Step 1a. Clean checkout of the tag -----------------------------
+      - name: Step 1a - checkout the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # -- Identity: tag -> version ---------------------------------------
+      - name: Derive version and tag
+        id: ident
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            v*) VERSION="${TAG#v}" ;;
+            *)  echo "::error::release tag '$TAG' does not start with 'v'; tags use v<MAJOR>.<MINOR>.<PATCH>"; exit 1 ;;
+          esac
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::version '$VERSION' derived from tag '$TAG' is not SemVer (gate 11)"
+            exit 1
+          fi
+          put() {
+            case "$2" in
+              *$'\n'*|*$'\r'*) echo "::error::the value for '$1' contains a line break"; exit 1 ;;
+            esac
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+          put tag     "$TAG"
+          put version "$VERSION"
+          echo "Releasing $TAG (version $VERSION)"
+
+      # -- Read the release contract -------------------------------------
+      - name: Read the release configuration
+        id: cfg
+        run: |
+          set -euo pipefail
+          if [ ! -f "$RELEASE_CONFIG" ]; then
+            echo "::error::$RELEASE_CONFIG is missing. Every repo instantiated from the repo template"
+            echo "::error::carries it. Restore it before tagging."
+            exit 1
+          fi
+          if ! command -v yq >/dev/null 2>&1; then
+            echo "::error::yq is not on this runner, so $RELEASE_CONFIG cannot be read."
+            echo "::error::yq ships with the GitHub-hosted ubuntu images; install it on a self-hosted runner."
+            exit 1
+          fi
+          # val <yq-path> -> value, empty string for null or missing
+          val() { v="$(yq "$1" "$RELEASE_CONFIG")"; [ "$v" = "null" ] && v=""; printf '%s' "$v"; }
+
+          # put <key> <value> -> one step output, refusing a line break.
+          # A multi-line config value written with a bare `echo "k=$v"` can forge
+          # a following line and turn on a publish channel the config does not
+          # enable. Multi-line values that are expected
+          # (the build and test commands) use the delimiter form further down.
+          put() {
+            case "$2" in
+              *$'\n'*|*$'\r'*)
+                echo "::error::the value for '$1' in $RELEASE_CONFIG contains a line break."
+                echo "::error::Step outputs are one line each; refusing to write it."
+                exit 1 ;;
+            esac
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+
+          SCHEMA="$(val '.schema_version')"
+          if [ "$SCHEMA" != "1" ]; then
+            echo "::error::release-config.yml schema_version is '$SCHEMA'; this workflow implements schema_version 1"
+            exit 1
+          fi
+
+          TOOL_SLUG="$(val '.tool_slug')"
+          PRODUCT_NAME="$(val '.product_name')"
+          ARTIFACT_KIND="$(val '.artifact_kind')"
+          RUNTIME="$(val '.runtime')"
+          DIST_DIR="$(val '.dist_dir')"; [ -n "$DIST_DIR" ] || DIST_DIR="dist"
+          BUILD_COMMAND="$(val '.build_command')"
+          TEST_COMMAND="$(val '.test_command')"
+          SBOM_GENERATOR="$(val '.sbom.generator')"
+          SBOM_MANUAL_PATH="$(val '.sbom.manual_path')"
+          LICENCE="$(val '.licence')"
+
+          fail=0
+          for pair in "tool_slug=$TOOL_SLUG" "product_name=$PRODUCT_NAME" \
+                      "artifact_kind=$ARTIFACT_KIND" "runtime=$RUNTIME" \
+                      "sbom.generator=$SBOM_GENERATOR"; do
+            key="${pair%%=*}"; value="${pair#*=}"
+            if [ -z "$value" ]; then echo "::error::release-config.yml: $key is required and is empty"; fail=1; fi
+          done
+          if ! printf '%s' "$TOOL_SLUG" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
+            echo "::error::release-config.yml: tool_slug '$TOOL_SLUG' is not a valid slug (lowercase-hyphen)"; fail=1
+          fi
+          if [ "$TOOL_SLUG" != "${GITHUB_REPOSITORY#*/}" ]; then
+            echo "::error::release-config.yml: tool_slug '$TOOL_SLUG' does not equal repository name '${GITHUB_REPOSITORY#*/}'."
+            echo "::error::The slug is the join key across repo, landing page and package name."
+            fail=1
+          fi
+          case "$ARTIFACT_KIND" in
+            bin|mod|plg|skl|web) ;;
+            *) echo "::error::release-config.yml: artifact_kind '$ARTIFACT_KIND' is not one of bin|mod|plg|skl|web"; fail=1 ;;
+          esac
+          case "$RUNTIME" in
+            powershell|node|python|go|streamdeck|claude-skill|none) ;;
+            *) echo "::error::release-config.yml: runtime '$RUNTIME' is not one of powershell|node|python|go|streamdeck|claude-skill|none"; fail=1 ;;
+          esac
+          case "$SBOM_GENERATOR" in
+            cyclonedx-npm|cyclonedx-py|cyclonedx-gomod) ;;
+            psd1)
+              # The SBOM is the document a procurement reviewer reads, so it must
+              # not assert a licence nobody chose. Per-project exceptions to the
+              # Apache-2.0 default are allowed, so there is no safe default here.
+              if [ -z "$LICENCE" ]; then
+                echo "::error::release-config.yml: sbom.generator is 'psd1' but 'licence' is empty."
+                echo "::error::Set it to the SPDX id this repo actually ships under, for example:"
+                echo "::error::  licence: \"Apache-2.0\""
+                fail=1
+              fi ;;
+            manual)
+              if [ -z "$SBOM_MANUAL_PATH" ]; then
+                echo "::error::release-config.yml: sbom.generator is 'manual' but sbom.manual_path is empty"; fail=1
+              fi ;;
+            *) echo "::error::release-config.yml: sbom.generator '$SBOM_GENERATOR' is not one of cyclonedx-npm|cyclonedx-py|cyclonedx-gomod|psd1|manual"; fail=1 ;;
+          esac
+          # dist_dir is used to build paths and globs; keep it a plain relative path.
+          # path-rule: relpath-no-root   (tested by scripts/test-path-rule.mjs)
+          if ! printf '%s' "$DIST_DIR" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$'; then
+            echo "::error::release-config.yml: dist_dir '$DIST_DIR' must be a relative path (no leading /, no .. segment)"; fail=1
+          fi
+          # path-rule: relpath-no-root   (tested by scripts/test-path-rule.mjs)
+          if [ -n "$SBOM_MANUAL_PATH" ] && ! printf '%s' "$SBOM_MANUAL_PATH" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$'; then
+            echo "::error::release-config.yml: sbom.manual_path '$SBOM_MANUAL_PATH' must be a relative path (no leading /, no .. segment)"; fail=1
+          fi
+          # Gate 2 has no opt-out: an empty test_command fails the release.
+          if [ -z "$TEST_COMMAND" ]; then
+            echo "::error::release-config.yml: test_command is empty. A release must run its test suite"
+            echo "::error::(release gate 9). There is no opt-out; add the command."
+            fail=1
+          fi
+          [ "$fail" -eq 0 ] || exit 1
+
+          put tool_slug        "$TOOL_SLUG"
+          put product_name     "$PRODUCT_NAME"
+          put artifact_kind    "$ARTIFACT_KIND"
+          put runtime          "$RUNTIME"
+          put dist_dir         "$DIST_DIR"
+          put sbom_generator   "$SBOM_GENERATOR"
+          put sbom_manual_path "$SBOM_MANUAL_PATH"
+          put licence          "$LICENCE"
+          put publish_psgallery       "$(val '.publish.psgallery')"
+          put publish_scoop           "$(val '.publish.scoop')"
+          put publish_winget          "$(val '.publish.winget')"
+          put publish_elgato_pack     "$(val '.publish.elgato_pack')"
+          put publish_claude_validate "$(val '.publish.claude_validate')"
+          # Commands may be multi-line, so they go through a delimiter block -
+          # the one path put() cannot cover. The delimiter is random per run: a
+          # fixed literal one lets a config whose build_command contains that
+          # literal terminate the block early and forge a following line such as
+          # publish_psgallery=true, enabling a channel the committed contract
+          # sets to false. put_multiline also refuses a value that manages to
+          # contain the delimiter anyway, so the guard does not rest on entropy.
+          put_multiline() {
+            local delim
+            delim="__EOF_$(openssl rand -hex 16)__"
+            case "$2" in
+              *"$delim"*)
+                echo "::error::the value for '$1' contains the generated output delimiter"; exit 1 ;;
+            esac
+            {
+              printf '%s<<%s\n' "$1" "$delim"
+              printf '%s\n' "$2"
+              printf '%s\n' "$delim"
+            } >> "$GITHUB_OUTPUT"
+          }
+          put_multiline build_command "$BUILD_COMMAND"
+          put_multiline test_command  "$TEST_COMMAND"
+
+      # -- Step 0. Release evidence gate ---------------------------------
+      - name: Step 0 - validate the release evidence file
+        env:
+          TAG: ${{ steps.ident.outputs.tag }}
+          VERSION: ${{ steps.ident.outputs.version }}
+        run: |
+          set -euo pipefail
+          EVIDENCE="docs/releases/${TAG}/release-evidence.json"
+          if [ ! -f "$EVIDENCE" ]; then
+            echo "::error::no release evidence for $TAG at $EVIDENCE."
+            echo "::error::Every release records its checklist result there."
+            exit 1
+          fi
+          CHECKLIST=""
+          for candidate in "${RELEASE_CHECKLIST_PATH:-}" docs/RELEASE-CHECKLIST.md RELEASE-CHECKLIST.md .github/RELEASE-CHECKLIST.md; do
+            if [ -n "$candidate" ] && [ -f "$candidate" ]; then CHECKLIST="$candidate"; break; fi
+          done
+          if [ -z "$CHECKLIST" ]; then
+            echo "::error::no RELEASE-CHECKLIST.md found. Looked at RELEASE_CHECKLIST_PATH,"
+            echo "::error::docs/RELEASE-CHECKLIST.md, RELEASE-CHECKLIST.md and .github/RELEASE-CHECKLIST.md."
+            echo "::error::Copy RELEASE-CHECKLIST.md from the release kit into the repo at one of those paths."
+            exit 1
+          fi
+          echo "Checklist: $CHECKLIST"
+          echo "Evidence:  $EVIDENCE"
+          echo "Config:    $RELEASE_CONFIG"
+
+          # The cheapest way to ship stale evidence is `cp -r docs/releases/v1.0.0
+          # docs/releases/v1.1.0` on release day, so the file's own tag and version
+          # are checked against the tag being released. This validator makes
+          # all three of these a step-0 duty, because the
+          # workflow holds $TAG and the validator does not.
+          DECLARED_SCHEMA="$(jq -r '.schema_version // ""' "$EVIDENCE")"
+          if [ "$DECLARED_SCHEMA" != "1" ]; then
+            echo "::error file=$EVIDENCE::this evidence file declares schema_version"
+            echo "::error::'$DECLARED_SCHEMA'; this pipeline implements schema_version 1."
+            echo "::error::A document in a shape these tools do not implement cannot be scored."
+            exit 1
+          fi
+          DECLARED_TAG="$(jq -r '.tag // ""' "$EVIDENCE")"
+          DECLARED_VERSION="$(jq -r '.version // ""' "$EVIDENCE")"
+          if [ "$DECLARED_TAG" != "$TAG" ] || [ "$DECLARED_VERSION" != "$VERSION" ]; then
+            echo "::error file=$EVIDENCE::this evidence file records tag '$DECLARED_TAG' version"
+            echo "::error::'$DECLARED_VERSION', but the release is tag '$TAG' version '$VERSION'."
+            echo "::error::Evidence copied forward from an earlier release is not evidence for this one."
+            exit 1
+          fi
+
+          set +e
+          OUT="$(node .github/workflows/scripts/check-release-evidence.mjs \
+                   --checklist "$CHECKLIST" \
+                   --evidence "$EVIDENCE" \
+                   --config "$RELEASE_CONFIG" 2>&1)"
+          RC=$?
+          set -e
+          printf '%s\n' "$OUT"
+          {
+            echo "### Release evidence ($TAG)"
+            echo ""
+            if [ "$RC" -eq 0 ]; then
+              echo "All applicable gates accounted for."
+            else
+              echo "check-release-evidence.mjs exited $RC:"
+              echo ""
+              echo '```'
+              printf '%s\n' "$OUT"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RC" -ne 0 ]; then
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error file=$EVIDENCE::$line"
+            done <<< "$OUT"
+            exit 1
+          fi
+
+      # -- Step 1b/1c. Toolchain and lockfile-pinned dependencies ---------
+      - name: Step 1b - set up Node
+        if: steps.cfg.outputs.runtime == 'node' || steps.cfg.outputs.runtime == 'streamdeck' || steps.cfg.outputs.sbom_generator == 'cyclonedx-npm'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Step 1b - set up Python
+        if: steps.cfg.outputs.runtime == 'python' || steps.cfg.outputs.sbom_generator == 'cyclonedx-py'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      # -- Go SBOM generator: its own toolchain, installed FIRST ----------
+      #
+      # cyclonedx-gomod v1.12.0 declares `go 1.26.0` in its own go.mod (read
+      # 2026-09-24 from
+      # https://raw.githubusercontent.com/CycloneDX/cyclonedx-gomod/v1.12.0/go.mod).
+      # A repo's go.mod is free to declare an older floor - the Go overlay ships
+      # `go 1.22` - and the project toolchain below is installed from that file,
+      # so building the generator with the project's Go fails ("requires go >=
+      # 1.26.0") and setup-go exports GOTOOLCHAIN=local, so Go will not fetch a
+      # newer one. The generator therefore gets its
+      # own exact toolchain, is compiled into $RUNNER_TEMP, and the project's
+      # toolchain is installed AFTER it so every later step - build, test, and
+      # the `go list` calls the generator makes against this module - uses the
+      # Go version the module itself declares. Nothing relies on toolchain
+      # auto-download: GOTOOLCHAIN=local is set explicitly on the install step.
+      #
+      # GO_FOR_SBOM_TOOL must stay >= the `go` directive in the pinned
+      # generator's go.mod; bump the two together. 1.26.8 was the newest 1.26
+      # patch release on https://go.dev/dl/?mode=json on 2026-09-24.
+      - name: Step 1b - set up the Go toolchain for the SBOM generator
+        if: steps.cfg.outputs.sbom_generator == 'cyclonedx-gomod'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.8'      # GO_FOR_SBOM_TOOL; >= cyclonedx-gomod v1.12.0's `go 1.26.0`
+          cache: false              # a release build never restores a cache; see the next step
+
+      - name: Step 1b - install the pinned SBOM generator
+        if: steps.cfg.outputs.sbom_generator == 'cyclonedx-gomod'
+        env:
+          GOTOOLCHAIN: local        # never download a toolchain; fail instead
+          GOFLAGS: ''               # -mod applies to a main module; `install pkg@version` has none
+          GOBIN: ${{ runner.temp }}/sbom-bin
+        run: |
+          set -euo pipefail
+          echo "Toolchain for the generator: $(go version)"
+          go install "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}" \
+            || { echo "::error::could not build cyclonedx-gomod ${CYCLONEDX_GOMOD_VERSION} with $(go version)."
+                 echo "::error::The generator's go.mod may require a newer Go than GO_FOR_SBOM_TOOL; bump them together."
+                 exit 1; }
+          "$GOBIN/cyclonedx-gomod" version
+
+      - name: Step 1b - set up Go for this module
+        if: steps.cfg.outputs.runtime == 'go' || steps.cfg.outputs.sbom_generator == 'cyclonedx-gomod'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod   # the toolchain version is pinned by the module itself
+          # No cache in the release job. setup-go
+          # restores GOCACHE - compiled build outputs - as well as the module
+          # cache, and `go mod verify` checks only the latter. A build cache
+          # written by an earlier default-branch run could otherwise influence
+          # the objects linked into a binary that is then attested as built from
+          # this tag. ci.yml keeps its cache; speed matters there, provenance
+          # does not.
+          cache: false
+
+      - name: Step 1c - restore dependencies from the committed lockfile
+        env:
+          RUNTIME: ${{ steps.cfg.outputs.runtime }}
+          SBOM_GENERATOR: ${{ steps.cfg.outputs.sbom_generator }}
+        run: |
+          set -euo pipefail
+          # Dependency pinning: a release build never resolves a floating range.
+          if [ "$RUNTIME" = "node" ] || [ "$RUNTIME" = "streamdeck" ] || [ "$SBOM_GENERATOR" = "cyclonedx-npm" ]; then
+            if [ ! -f package-lock.json ]; then
+              echo "::error::package-lock.json is not committed, so 'npm ci' cannot run."
+              echo "::error::'npm install' is not permitted in a release build; dependencies must be pinned."
+              exit 1
+            fi
+            npm ci
+          fi
+          if [ "$RUNTIME" = "python" ] || [ "$SBOM_GENERATOR" = "cyclonedx-py" ]; then
+            if [ ! -f requirements.txt ]; then
+              echo "::error::requirements.txt is not committed; dependencies must be pinned."
+              exit 1
+            fi
+            if grep -qE '^[A-Za-z0-9_.-]+[[:space:]]*(>=|<=|>|<|~=|\*)' requirements.txt; then
+              echo "::error::requirements.txt contains a floating version range:"
+              grep -nE '^[A-Za-z0-9_.-]+[[:space:]]*(>=|<=|>|<|~=|\*)' requirements.txt
+              exit 1
+            fi
+            python -m pip install --disable-pip-version-check -r requirements.txt
+          fi
+          if [ "$RUNTIME" = "go" ] || [ "$SBOM_GENERATOR" = "cyclonedx-gomod" ]; then
+            # go.mod + go.sum is the pin mechanism for this runtime.
+            # go.sum carries a cryptographic hash for every
+            # module in the build, so `go mod verify` is the lockfile check.
+            if [ ! -f go.mod ]; then
+              echo "::error::go.mod is not committed"
+              exit 1
+            fi
+            if [ ! -f go.sum ]; then
+              echo "::error::go.sum is not committed. It is the pin mechanism for Go:"
+              echo "::error::without it a release build resolves module versions it has never verified."
+              exit 1
+            fi
+            go mod download
+            go mod verify
+          fi
+          if [ "$RUNTIME" = "powershell" ]; then
+            PSD1="$(find . -maxdepth 3 -name '*.psd1' -not -path './.git/*' | head -n 1)"
+            if [ -z "$PSD1" ]; then
+              echo "::error::runtime is 'powershell' but no .psd1 module manifest was found"
+              exit 1
+            fi
+            if grep -q 'RequiredModules' "$PSD1" && ! grep -q 'RequiredVersion' "$PSD1"; then
+              echo "::error::$PSD1 declares RequiredModules without RequiredVersion."
+              echo "::error::ModuleVersion is a floor, not a pin."
+              exit 1
+            fi
+          fi
+
+      # -- Step 1d. `powershell` on ubuntu, for runtime: powershell --------
+      #
+      # For runtime: powershell the recommended test_command names its own
+      # interpreter: `powershell -NoProfile -NonInteractive -Command "..."`
+      # so it names its own interpreter explicitly. On windows-latest that is powershell.exe,
+      # Windows PowerShell 5.1, which is how ci.yml's test-windows lane proves the
+      # 5.1 floor. This release job runs on ubuntu, where no `powershell` binary
+      # exists, only `pwsh` (PowerShell 7). Rather than make every repo carry two
+      # test commands, a one-line shim maps `powershell` to `pwsh` for this job
+      # only. That is a statement of fact, not a disguise: the release job
+      # re-runs the suite under 7 as a release precondition, and the 5.1 floor
+      # is proven by ci.yml, never here. The shim is never created on Windows.
+      - name: Step 1d - map powershell to pwsh on this ubuntu runner
+        if: steps.cfg.outputs.runtime == 'powershell'
+        run: |
+          set -euo pipefail
+          command -v pwsh >/dev/null 2>&1 || { echo "::error::pwsh is not on this runner"; exit 1; }
+          if command -v powershell >/dev/null 2>&1; then
+            echo "A real 'powershell' is already on PATH; no shim needed."
+            exit 0
+          fi
+          SHIM_DIR="$RUNNER_TEMP/powershell-shim"
+          mkdir -p "$SHIM_DIR"
+          printf '#!/usr/bin/env bash\nexec pwsh "$@"\n' > "$SHIM_DIR/powershell"
+          chmod +x "$SHIM_DIR/powershell"
+          echo "$SHIM_DIR" >> "$GITHUB_PATH"
+          # The single quotes are deliberate: pwsh, not bash, expands $PSVersionTable.
+          # shellcheck disable=SC2016
+          echo "::notice::In the release job 'powershell' runs pwsh $(pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'). The Windows PowerShell 5.1 floor is proven by ci.yml's test-windows job, not here."
+
+      # -- Step 2. Lint and the full test suite ---------------------------
+      - name: Step 2 - lint and test
+        env:
+          TEST_COMMAND: ${{ steps.cfg.outputs.test_command }}
+        run: |
+          set -euo pipefail
+          echo "Running: $TEST_COMMAND"
+          bash -euo pipefail -c "$TEST_COMMAND"
+
+      # -- Step 3. Build into the dist directory --------------------------
+      - name: Step 3 - build artifacts
+        id: build
+        env:
+          BUILD_COMMAND: ${{ steps.cfg.outputs.build_command }}
+          DIST_DIR: ${{ steps.cfg.outputs.dist_dir }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIST_DIR"
+          if [ -n "$BUILD_COMMAND" ]; then
+            echo "Running: $BUILD_COMMAND"
+            bash -euo pipefail -c "$BUILD_COMMAND"
+          else
+            echo "build_command is empty; the repo is expected to have produced $DIST_DIR itself."
+          fi
+          if [ -z "$(find "$DIST_DIR" -type f -print -quit)" ]; then
+            echo "::error::$DIST_DIR is empty after the build step. Directory listing:"
+            ls -la "$DIST_DIR" || true
+            exit 1
+          fi
+          # Release assets are flat: a GitHub Release holds files, not trees.
+          # Keeping the directory flat also keeps three things in agreement that
+          # would otherwise drift - the `artifacts` output, SHA256SUMS, and the
+          # attestation's dist/* subject glob, which would otherwise pick up a
+          # subdirectory entry. Stage intermediate
+          # build output somewhere other than the dist directory.
+          #
+          # This holds for a cross-compiled Go build too,
+          # which is the case most likely to reach for per-platform directories:
+          # ruled flat. One archive per target at the dist root, named
+          #   <slug>_<version>_<os>_<arch>.tar.gz   (or .zip for windows)
+          # so every archive is checksummed in the one SHA256SUMS and every one
+          # is an attestation subject. `build_command` is what lays them out.
+          SUBDIRS="$(find "$DIST_DIR" -mindepth 1 -type d)"
+          if [ -n "$SUBDIRS" ]; then
+            echo "::error::$DIST_DIR contains subdirectories; release assets must be flat files:"
+            printf '%s\n' "$SUBDIRS" | sed 's/^/  /'
+            exit 1
+          fi
+          ARTIFACTS="$(cd "$DIST_DIR" && find . -maxdepth 1 -type f -printf '%P\n' | LC_ALL=C sort | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          put() {
+            case "$2" in
+              *$'\n'*|*$'\r'*) echo "::error::the value for '$1' contains a line break"; exit 1 ;;
+            esac
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+          put artifacts "$ARTIFACTS"
+          echo "Built: $ARTIFACTS"
+
+      # -- Step 4. CycloneDX SBOM ------------------------------------------
+      - name: Step 4 - generate the CycloneDX SBOM
+        id: sbom
+        env:
+          SLUG: ${{ steps.cfg.outputs.tool_slug }}
+          VERSION: ${{ steps.ident.outputs.version }}
+          DIST_DIR: ${{ steps.cfg.outputs.dist_dir }}
+          GENERATOR: ${{ steps.cfg.outputs.sbom_generator }}
+          MANUAL_PATH: ${{ steps.cfg.outputs.sbom_manual_path }}
+          PRODUCT_NAME: ${{ steps.cfg.outputs.product_name }}
+          LICENCE: ${{ steps.cfg.outputs.licence }}
+          SBOM_BIN: ${{ runner.temp }}/sbom-bin
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          SBOM="${DIST_DIR}/${SLUG}-${VERSION}.cdx.json"
+          export SBOM
+          case "$GENERATOR" in
+            cyclonedx-npm)
+              # Resolved from the committed lockfile (--no-install), never fetched ad hoc.
+              npx --no-install cyclonedx-npm --output-format JSON --output-file "$SBOM" --spec-version 1.5 \
+                || { echo "::error::cyclonedx-npm failed. Add @cyclonedx/cyclonedx-npm to devDependencies and commit the lockfile."; exit 1; }
+              ;;
+            cyclonedx-py)
+              command -v cyclonedx-py >/dev/null 2>&1 \
+                || { echo "::error::cyclonedx-py is not installed. Pin it in requirements.txt."; exit 1; }
+              cyclonedx-py environment --output-format JSON --outfile "$SBOM" \
+                || { echo "::error::cyclonedx-py failed"; exit 1; }
+              ;;
+            cyclonedx-gomod)
+              # Built in step 1b at the exact pinned version, with its own
+              # toolchain, and fetched through the Go module proxy so its build
+              # was checksum-verified against the Go checksum database. It runs
+              # here with the MODULE's toolchain on PATH, so its `go list` calls
+              # see this module the way the build did. `mod` reads go.mod rather
+              # than a built binary - the right shape for a cross-compiled
+              # release: one SBOM describes the module, not one archive.
+              [ -x "$SBOM_BIN/cyclonedx-gomod" ] \
+                || { echo "::error::the SBOM generator was not installed in step 1b"; exit 1; }
+              echo "Module toolchain: $(go version)"
+              "$SBOM_BIN/cyclonedx-gomod" mod -json -licenses -output "$SBOM" \
+                || { echo "::error::cyclonedx-gomod ${CYCLONEDX_GOMOD_VERSION} failed"; exit 1; }
+              ;;
+            psd1)
+              PSD1="$(find . -maxdepth 3 -name '*.psd1' -not -path './.git/*' | head -n 1)"
+              [ -n "$PSD1" ] || { echo "::error::sbom.generator is 'psd1' but no .psd1 manifest was found"; exit 1; }
+              command -v pwsh >/dev/null 2>&1 || { echo "::error::pwsh is not on this runner; the psd1 SBOM generator needs it"; exit 1; }
+              pwsh -NoProfile -NonInteractive -File .github/workflows/scripts/new-psd1-sbom.ps1 \
+                -ManifestPath "$PSD1" -OutFile "$SBOM" -Name "$SLUG" -Version "$VERSION" \
+                -Description "$PRODUCT_NAME" -Licence "$LICENCE" \
+                || { echo "::error::the psd1 SBOM generator failed"; exit 1; }
+              ;;
+            manual)
+              [ -f "$MANUAL_PATH" ] || { echo "::error::sbom.manual_path '$MANUAL_PATH' does not exist"; exit 1; }
+              cp "$MANUAL_PATH" "$SBOM"
+              ;;
+          esac
+          # A zero-dependency tool still ships an SBOM; one component is a pass.
+          node -e '
+            const fs = require("fs");
+            const p = process.argv[1];
+            let doc;
+            try { doc = JSON.parse(fs.readFileSync(p, "utf8")); }
+            catch (e) { console.error("::error::SBOM " + p + " does not parse: " + e.message); process.exit(1); }
+            if (doc.bomFormat !== "CycloneDX") { console.error("::error::SBOM " + p + " is not CycloneDX (bomFormat=" + doc.bomFormat + ")"); process.exit(1); }
+            const n = Array.isArray(doc.components) ? doc.components.length : 0;
+            if (n === 0) { console.error("::error::SBOM " + p + " has zero components; it must name at least the tool itself"); process.exit(1); }
+            console.log("SBOM " + p + ": CycloneDX " + doc.specVersion + ", " + n + " component(s)");
+          ' "$SBOM"
+          put() {
+            case "$2" in
+              *$'\n'*|*$'\r'*) echo "::error::the value for '$1' contains a line break"; exit 1 ;;
+            esac
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+          put sbom_path "$SBOM"
+
+      # -- Step 5. SHA256SUMS over every file in dist/, the SBOM included --
+      - name: Step 5 - generate SHA256SUMS
+        id: sums
+        env:
+          DIST_DIR: ${{ steps.cfg.outputs.dist_dir }}
+        run: |
+          set -euo pipefail
+          SUMS="${DIST_DIR}/SHA256SUMS"
+          rm -f "$SUMS"
+          # -maxdepth 1 matches step 3's flatness rule and the attestation's glob.
+          mapfile -t FILES < <(cd "$DIST_DIR" && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' | LC_ALL=C sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "::error::nothing to checksum in $DIST_DIR"
+            exit 1
+          fi
+          ( cd "$DIST_DIR" && sha256sum "${FILES[@]}" > SHA256SUMS )
+          cat "$SUMS"
+          put() {
+            case "$2" in
+              *$'\n'*|*$'\r'*) echo "::error::the value for '$1' contains a line break"; exit 1 ;;
+            esac
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+          put sha256sums_path "$SUMS"
+
+      # -- Step 6. Sigstore build-provenance attestation (H5, S4) ---------
+      # No secret is used: the action signs with the workflow's OIDC identity.
+      - name: Step 6 - attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.cfg.outputs.dist_dir }}/*
+          show-summary: true
+
+      - name: Step 6b - stage the attestation bundle for upload
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          DIST_DIR: ${{ steps.cfg.outputs.dist_dir }}
+          SLUG: ${{ steps.cfg.outputs.tool_slug }}
+          VERSION: ${{ steps.ident.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BUNDLE" ] || [ ! -f "$BUNDLE" ]; then
+            echo "::error::the attestation step produced no bundle path, so subject-path matched nothing"
+            exit 1
+          fi
+          # Staged after SHA256SUMS on purpose: the bundle attests the files the
+          # checksum file covers, so it cannot appear inside its own checksum list.
+          cp "$BUNDLE" "${DIST_DIR}/${SLUG}-${VERSION}.intoto.jsonl"
+          echo "Attestation bundle staged as ${SLUG}-${VERSION}.intoto.jsonl"
+
+      # -- Step 7. Create the GitHub Release from the changelog section ----
+      - name: Step 7 - create the GitHub Release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ident.outputs.tag }}
+          VERSION: ${{ steps.ident.outputs.version }}
+          DIST_DIR: ${{ steps.cfg.outputs.dist_dir }}
+          PRODUCT_NAME: ${{ steps.cfg.outputs.product_name }}
+        run: |
+          set -euo pipefail
+          if [ ! -f CHANGELOG.md ]; then
+            echo "::error::CHANGELOG.md is missing; the release notes come from it (release gate 10)"
+            exit 1
+          fi
+          NOTES="$(mktemp)"
+          node .github/workflows/scripts/changelog-section.mjs --version "$VERSION" --changelog CHANGELOG.md > "$NOTES"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::a GitHub Release already exists for $TAG. Delete it or tag a new version;"
+            echo "::error::this workflow never overwrites a published release."
+            exit 1
+          fi
+          # A prerelease must be labelled as one. gh defaults prerelease to false
+          # and GitHub computes "Latest" as the newest non-draft, non-prerelease
+          # release - so without this flag v1.2.0-rc.1 becomes the repository's
+          # Latest, and /releases/latest/download/<asset>, the verify-downloads
+          # instructions and the landing page all point at a release candidate.
+          # The rest of the pipeline already treats a prerelease as one (no
+          # channel is published for it); this is the half users actually see.
+          PRERELEASE=()
+          if ! printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            PRERELEASE=(--prerelease)
+            echo "$TAG is a prerelease tag; the GitHub Release will be marked as a prerelease."
+          fi
+          mapfile -t ASSETS < <(find "$DIST_DIR" -maxdepth 1 -type f | LC_ALL=C sort)
+          gh release create "$TAG" \
+            --title "${PRODUCT_NAME} ${VERSION}" \
+            --notes-file "$NOTES" \
+            --verify-tag \
+            "${PRERELEASE[@]}" \
+            "${ASSETS[@]}"
+          RELEASE_URL="$(gh release view "$TAG" --json url -q .url)"
+          put() {
+            case "$2" in
+              *$'\n'*|*$'\r'*) echo "::error::the value for '$1' contains a line break"; exit 1 ;;
+            esac
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+          put release_url "$RELEASE_URL"
+          {
+            echo "### Release $TAG"
+            echo ""
+            echo "- $RELEASE_URL"
+            echo "- assets: ${#ASSETS[@]}"
+            echo ""
+            echo "Verify without Authenticode (H5):"
+            echo ""
+            echo '```'
+            echo "gh attestation verify <file> --repo $GITHUB_REPOSITORY"
+            echo "Get-FileHash -Algorithm SHA256 .\\<file>"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------
+  # Step 8. Publish fan-out.
+  #
+  # The per-channel jobs live in their own files so each can be re-run on its
+  # own after a failure, and so a publish failure never rolls back a GitHub
+  # Release that already exists. They are started here by explicit dispatch
+  # rather than by a same-repo reusable-workflow reference, because AC4b
+  # requires every action reference under templates/workflows/ to end in a
+  # 40-hex commit SHA and a same-repo relative path has none.
+  #
+  # workflow_dispatch is one of exactly two events a GITHUB_TOKEN may trigger
+  # (the other is repository_dispatch); every other token-triggered event
+  # creates no run at all. Source, read 2026-09-14:
+  #   https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+  #
+  # This job is deliberately NOT in the `release` environment: it puts nothing
+  # on an external channel, it only starts the jobs that do. The required-
+  # reviewer hold sits on each publish workflow itself.
+  # ---------------------------------------------------------------------
+  publish:
+    name: Step 8 - publish fan-out
+    needs: release
+    if: needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write      # only to dispatch this repository's own publish workflows
+    steps:
+      - name: Dispatch the enabled channel workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+          VERSION: ${{ needs.release.outputs.version }}
+          SLUG: ${{ needs.release.outputs.slug }}
+          RELEASE_URL: ${{ needs.release.outputs.release_url }}
+          DO_PSGALLERY: ${{ needs.release.outputs.publish_psgallery }}
+          DO_SCOOP: ${{ needs.release.outputs.publish_scoop }}
+          DO_WINGET: ${{ needs.release.outputs.publish_winget }}
+          DO_ELGATO: ${{ needs.release.outputs.publish_elgato }}
+          DO_SKILL: ${{ needs.release.outputs.publish_skill }}
+        run: |
+          set -euo pipefail
+          # Every publish workflow refuses a tag that is not exactly
+          # v<MAJOR>.<MINOR>.<PATCH>, so a prerelease gets a GitHub Release and
+          # nothing else rather than five channel jobs that each fail. PSGallery
+          # in particular keeps a prerelease suffix in PrivateData.PSData.Prerelease,
+          # not in ModuleVersion, so the module manifest could never match the tag
+          # so a prerelease gets a GitHub Release and nothing else.
+          if ! printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "$TAG is a prerelease tag. The GitHub Release is published; no channel is."
+            {
+              echo "### Publish fan-out"
+              echo ""
+              echo "- skipped: $TAG is a prerelease tag, so no channel was started."
+              echo "- release: $RELEASE_URL"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          started=0
+          dispatch() {
+            wf="$1"; shift
+            echo "Dispatching $wf at $TAG"
+            gh workflow run "$wf" --ref "$TAG" "$@"
+            started=$((started + 1))
+          }
+          if [ "$DO_PSGALLERY" = "true" ]; then dispatch publish-psgallery.yml -f version="$VERSION" -f tag="$TAG"; fi
+          if [ "$DO_SCOOP" = "true" ];     then dispatch update-scoop-bucket.yml -f version="$VERSION" -f tag="$TAG" -f slug="$SLUG"; fi
+          if [ "$DO_WINGET" = "true" ];    then dispatch winget-submit.yml -f version="$VERSION" -f tag="$TAG"; fi
+          if [ "$DO_ELGATO" = "true" ];    then dispatch pack-streamdeck.yml -f version="$VERSION" -f tag="$TAG"; fi
+          if [ "$DO_SKILL" = "true" ];     then dispatch validate-skill.yml -f version="$VERSION" -f tag="$TAG"; fi
+          if [ "$started" -eq 0 ]; then
+            echo "No publish channel is enabled in release-config.yml; the GitHub Release is the only channel."
+          fi
+          {
+            echo "### Publish fan-out"
+            echo ""
+            echo "- channels started: $started"
+            echo "- release: $RELEASE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

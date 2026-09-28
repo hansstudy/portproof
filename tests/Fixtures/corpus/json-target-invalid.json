@@ -1,0 +1,2 @@
+{ "schema": "portproof-profile/1", "name": "x", "rows": [
+  { "source": "client", "target": "not_a_host!!", "port": 443, "protocol": "TCP", "required": "yes" } ] }

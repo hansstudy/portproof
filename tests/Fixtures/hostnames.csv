@@ -1,0 +1,10 @@
+Source,Target,Port,Protocol,Required
+client,broadcast.test,443,TCP,no
+client,multicast.test,443,TCP,no
+client,linklocal.test,443,TCP,no
+client,thisnetwork.test,443,TCP,no
+client,unspecified.test,443,TCP,no
+client,multicast6.test,443,TCP,no
+client,multi-address.test,443,TCP,no
+client,alias-one.test,443,TCP,no
+client,alias-two.test,443,TCP,no

@@ -1,0 +1,30 @@
+{
+  "profile": "sql-server",
+  "vendor": "Microsoft",
+  "product": "SQL Server Database Engine (on Windows)",
+  "product_version": "SQL Server 2017 and later (the cited pages carry the moniker range sql-server-2017 through sql-server-ver17)",
+  "sources": [
+    {
+      "id": 1,
+      "url": "https://learn.microsoft.com/en-us/sql/sql-server/install/configure-the-windows-firewall-to-allow-sql-server-access",
+      "title": "Configure the Windows Firewall to Allow SQL Server Access",
+      "retrieved": "2026-09-25",
+      "archived": false
+    },
+    {
+      "id": 2,
+      "url": "https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/configure-a-windows-firewall-for-database-engine-access",
+      "title": "Configure Windows Firewall for Database Engine Access",
+      "retrieved": "2026-09-25",
+      "archived": false
+    }
+  ],
+  "row_numbering": "CSV convention: the header line is row 1, so the first data row is row 2. See docs/profiles/schema.md section 6 for how this maps to the JSON file's own 1-based rows[] index.",
+  "rows": [
+    { "row": 2, "sources": [1, 2] },
+    { "row": 3, "sources": [1, 2] },
+    { "row": 4, "sources": [1] },
+    { "row": 5, "sources": [1] },
+    { "row": 6, "sources": [1] }
+  ]
+}

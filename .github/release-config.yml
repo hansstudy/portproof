@@ -1,0 +1,28 @@
+# PortProof release input contract. Read by .github/workflows/ci.yml and release.yml.
+schema_version: 1
+tool_slug:      "portproof"             # must equal the repo name
+product_name:   "PortProof"
+artifact_kind:  "mod"                   # a bare .ps1 ships as mod with a minimal PortProof.psd1
+runtime:        "powershell"            # lint/test on windows-latest under Windows PowerShell 5.1
+landing_url:    "https://hans.study/tools/portproof/"
+dist_dir:       "dist"
+build_command:  "powershell -NoProfile -NonInteractive -File build/Build-PortProof.ps1"
+test_command:   "powershell -NoProfile -NonInteractive -File tests/Invoke-Tests.ps1"
+
+# The authoritative checklist scope. "prod": the bundled AD/DC profile runs against domain
+# controllers, which brings gate 24 into scope.
+artifact_kinds: ["mod", "prod"]
+
+licence: "Apache-2.0"
+
+lint_command:   "powershell -NoProfile -NonInteractive -File tests/Static/Invoke-Lint.ps1"
+
+sbom:
+  generator:    "psd1"
+  manual_path:  ""
+publish:
+  psgallery:    false
+  scoop:        false
+  winget:       false
+  elgato_pack:  false
+  claude_validate: false

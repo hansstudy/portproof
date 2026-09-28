@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hans.study/schemas/release-evidence-1.json",
+  "title": "Release evidence",
+  "description": "Per-release record of the RELEASE-CHECKLIST.md gates for one tool repo, written to docs/releases/v<MAJOR>.<MINOR>.<PATCH>/release-evidence.json. This schema is for editors and reviewers only: check-release-evidence.mjs does not read it, because the validator must stay dependency-free and because most of the rules that matter are cross-file (they compare this document against the gate registry embedded in RELEASE-CHECKLIST.md) and cannot be expressed in JSON Schema at all.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool",
+    "version",
+    "tag",
+    "artifact_kinds",
+    "checklist_version",
+    "recorded_by",
+    "recorded_at",
+    "results"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Shape of this document. Bumped only when the document's own structure changes.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "description": "Tool slug. Equals the repository name, the /tools/<slug>/ landing segment and the scoop app name.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "version": {
+      "description": "SemVer, with no leading v.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+    },
+    "tag": {
+      "description": "Git tag for this release. release.yml step 0 refuses an evidence file whose tag or version is not the tag being released, so a directory copied forward from an earlier release cannot stand in for this one.",
+      "type": "string",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+    },
+    "artifact_kinds": {
+      "description": "Which checklist tags this release claims. It MUST equal the artifact_kinds list in the repo's committed .github/release-config.yml, which is the authoritative scope; check-release-evidence.mjs reads both and reports scope-mismatch if they differ, because a scope an evidence file can narrow on release day is not a control. A gate is in scope when it is tagged [all] or when one of these tags appears on it, so a repo that runs against production directory services or access-control panels lists prod in release-config.yml alongside its artifact kind, and restates it here.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["bin", "mod", "plg", "skl", "web", "prod"] }
+    },
+    "checklist_version": {
+      "description": "Must equal checklist_version in the RELEASE-CHECKLIST.md gate registry. A mismatch means the evidence was recorded against a different gate list and is a finding.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "recorded_by": {
+      "description": "GitHub login of the person who recorded the result.",
+      "type": "string",
+      "minLength": 1
+    },
+    "recorded_at": {
+      "description": "ISO date, YYYY-MM-DD.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "notes": {
+      "description": "Free text for anything the per-gate entries do not cover.",
+      "type": "string"
+    },
+    "results": {
+      "description": "One entry per gate. Every gate in scope needs one; there is no 'skip' status, because an applicable gate that was not done is a failed release (the N/A rule).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status"],
+        "properties": {
+          "id": {
+            "description": "Gate id from the registry, for example G15-sbom-published. Ids are stable forever; a gate is never renumbered.",
+            "type": "string",
+            "pattern": "^G\\d{1,2}-[a-z0-9-]+$"
+          },
+          "status": {
+            "description": "pass, na or fail. na needs a reason of at least 20 characters and is refused on a gate whose registry entry sets na_allowed to false - except on a prerelease tag, where a gate carrying prerelease_na_allowed accepts na with the registry's own prerelease_na_reason_fixed wording. Which case applies is decided by this document's `tag`: a final tag is exactly vMAJOR.MINOR.PATCH, anything else is a prerelease.",
+            "enum": ["pass", "na", "fail"]
+          },
+          "reason": {
+            "description": "Why this gate is N/A, written out. Required for status na. Where the registry fixes the wording (gate 18's na_reason_fixed, or a prerelease gate's prerelease_na_reason_fixed) use that text verbatim, so every repo gives the same answer.",
+            "type": "string",
+            "minLength": 20
+          },
+          "evidence": {
+            "description": "The artifact a verifier can point at: a URL, a repo-relative path, or the output of the gate's command. Required for a pass on a gate the registry marks automatable.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "status": { "const": "na" } }, "required": ["status"] },
+            "then": { "required": ["reason"] }
+          },
+          {
+            "if": { "properties": { "status": { "const": "fail" } }, "required": ["status"] },
+            "then": {
+              "description": "A fail is always a finding; the reason is recorded so the next attempt knows what to fix.",
+              "required": ["reason"]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

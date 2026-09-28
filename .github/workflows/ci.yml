@@ -1,0 +1,569 @@
+# template-version: 4
+# ---------------------------------------------------------------------------
+# ci.yml - lint and test on push and pull request.
+#
+# Jobs: config, lint, test, lint-windows, test-windows, evidence-lint,
+# secret-scan, actions-lint.
+#
+# The config job reads .github/release-config.yml once and every other job takes
+# what it needs from its outputs. That is not only tidier than repeating the
+# read: `windows-latest` images do not reliably carry yq, and the Windows jobs
+# need to know the runtime before they can do anything.
+#
+# WHERE THINGS RUN. `runtime: powershell` means a Windows PowerShell
+# 5.1 support floor, and 5.1 exists only on Windows. Testing such a repo on
+# ubuntu under pwsh 7 tests a runtime no user has, and produces a green badge
+# over code that cannot run on the target. So for `runtime: powershell` the lint
+# and test jobs run on `windows-latest` under `shell: powershell`
+# (powershell.exe, Windows PowerShell 5.1) - deliberately NOT `pwsh`, which is
+# PowerShell 7 and is the thing being avoided. Every other runtime lints and
+# tests on ubuntu. The release job stays on ubuntu in both cases: a PowerShell
+# module compiles nothing, and the SBOM helper already runs under pwsh on Linux.
+#
+# pull_request_target is never used anywhere in this pipeline: it would run
+# a fork's code with this repository's secrets. Nothing here needs it.
+#
+# PINNING. Every action reference in this file is a full 40-hex commit SHA with
+# its release tag in a trailing comment, per the dependency-pinning rule and AC4b.
+# SHAs were resolved
+# on 2026-09-14 (setup-go on 2026-09-24) from the GitHub tags API; those
+# responses are the citation:
+#   actions/checkout          https://api.github.com/repos/actions/checkout/tags
+#   actions/setup-node        https://api.github.com/repos/actions/setup-node/tags
+#   actions/setup-python      https://api.github.com/repos/actions/setup-python/tags
+#   actions/setup-go          https://api.github.com/repos/actions/setup-go/tags
+#   gitleaks/gitleaks-action  https://api.github.com/repos/gitleaks/gitleaks-action/tags
+#
+# actionlint is NOT referenced as an action: rhysd/actionlint publishes no
+# action.yml at its repository root (checked 2026-09-14 via
+# https://api.github.com/repos/rhysd/actionlint/contents/), so there is nothing
+# to pin. It is installed instead by its own installer script, fetched from an
+# immutable commit-SHA URL, which is the same pinning guarantee.
+# ---------------------------------------------------------------------------
+
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Least privilege: nothing at workflow level, granted per job.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RELEASE_CONFIG: .github/release-config.yml
+  # Actions does not inject `vars` into `env` automatically, so the checklist
+  # path override the README documents only works if it is wired here
+  # Unset resolves to an empty string.
+  RELEASE_CHECKLIST_PATH: ${{ vars.RELEASE_CHECKLIST_PATH }}
+
+jobs:
+  config:
+    name: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      runtime: ${{ steps.cfg.outputs.runtime }}
+      lint_command: ${{ steps.cfg.outputs.lint_command }}
+      test_command: ${{ steps.cfg.outputs.test_command }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the release configuration
+        id: cfg
+        run: |
+          set -euo pipefail
+          if [ ! -f "$RELEASE_CONFIG" ]; then
+            echo "::error::$RELEASE_CONFIG is missing"
+            exit 1
+          fi
+          command -v yq >/dev/null 2>&1 || { echo "::error::yq is not on this runner"; exit 1; }
+          val() { v="$(yq "$1" "$RELEASE_CONFIG")"; [ "$v" = "null" ] && v=""; printf '%s' "$v"; }
+
+          # A config value containing a line break could forge a second step
+          # output line, so single-line outputs go through this.
+          put() {
+            case "$2" in
+              *$'\n'*|*$'\r'*)
+                echo "::error::the value for '$1' in $RELEASE_CONFIG contains a line break"; exit 1 ;;
+            esac
+            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          }
+          # Commands are legitimately multi-line, so they need the delimiter
+          # form - the one path put() cannot cover. The delimiter is random per
+          # run, because a fixed literal one lets a config that contains it
+          # terminate the block early and forge a following output line
+          # per run.
+          put_multiline() {
+            local delim
+            delim="__EOF_$(openssl rand -hex 16)__"
+            case "$2" in
+              *"$delim"*)
+                echo "::error::the value for '$1' contains the generated output delimiter"; exit 1 ;;
+            esac
+            {
+              printf '%s<<%s\n' "$1" "$delim"
+              printf '%s\n' "$2"
+              printf '%s\n' "$delim"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          RUNTIME="$(val '.runtime')"
+          case "$RUNTIME" in
+            powershell|node|python|go|streamdeck|claude-skill|none) ;;
+            *) echo "::error::release-config.yml: runtime '$RUNTIME' is not one of powershell|node|python|go|streamdeck|claude-skill|none"; exit 1 ;;
+          esac
+
+          TEST_COMMAND="$(val '.test_command')"
+          if [ -z "$TEST_COMMAND" ]; then
+            echo "::error::test_command is empty in $RELEASE_CONFIG. A repo that cannot run its"
+            echo "::error::tests in CI cannot cut a release either."
+            exit 1
+          fi
+
+          put runtime "$RUNTIME"
+          put_multiline lint_command "$(val '.lint_command')"
+          put_multiline test_command "$TEST_COMMAND"
+          echo "runtime=$RUNTIME"
+
+  # -----------------------------------------------------------------------
+  # ubuntu lane - every runtime except powershell
+  # -----------------------------------------------------------------------
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    needs: config
+    if: needs.config.outputs.runtime != 'powershell'
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      RUNTIME: ${{ needs.config.outputs.runtime }}
+      # Go row: a build that would modify go.mod or
+      # go.sum fails instead. Harmless for every other runtime.
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        if: needs.config.outputs.runtime == 'node' || needs.config.outputs.runtime == 'streamdeck'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Set up Python
+        if: needs.config.outputs.runtime == 'python'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      - name: Set up Go
+        if: needs.config.outputs.runtime == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install dependencies from the committed lockfile
+        run: |
+          set -euo pipefail
+          if [ "$RUNTIME" = "node" ] || [ "$RUNTIME" = "streamdeck" ]; then
+            [ -f package-lock.json ] || { echo "::error::package-lock.json is not committed; dependency pinning requires an exact, committed lockfile"; exit 1; }
+            npm ci
+          fi
+          if [ "$RUNTIME" = "python" ]; then
+            [ -f requirements.txt ] || { echo "::error::requirements.txt is not committed; dependency pinning requires an exact, committed lockfile"; exit 1; }
+            python -m pip install --disable-pip-version-check -r requirements.txt
+          fi
+          if [ "$RUNTIME" = "go" ]; then
+            [ -f go.mod ] || { echo "::error::go.mod is not committed"; exit 1; }
+            [ -f go.sum ] || { echo "::error::go.sum is not committed; it is the pin mechanism for Go"; exit 1; }
+            go mod download
+            # Refuse a go.sum that does not match go.mod, which is the Go
+            # equivalent of a lockfile that has drifted from its manifest.
+            go mod verify
+          fi
+
+      - name: Run the linter
+        env:
+          LINT_COMMAND: ${{ needs.config.outputs.lint_command }}
+        run: |
+          set -euo pipefail
+          if [ -z "$LINT_COMMAND" ]; then
+            echo "No lint_command is configured in $RELEASE_CONFIG; skipping the runtime linter."
+            echo "The workflow linter (actions-lint) and the secret scan still run."
+            exit 0
+          fi
+          echo "Running: $LINT_COMMAND"
+          bash -euo pipefail -c "$LINT_COMMAND"
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    needs: config
+    if: needs.config.outputs.runtime != 'powershell'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      RUNTIME: ${{ needs.config.outputs.runtime }}
+      # Go row: a build that would modify go.mod or
+      # go.sum fails instead. Harmless for every other runtime.
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        if: needs.config.outputs.runtime == 'node' || needs.config.outputs.runtime == 'streamdeck'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Set up Python
+        if: needs.config.outputs.runtime == 'python'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      - name: Set up Go
+        if: needs.config.outputs.runtime == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install dependencies from the committed lockfile
+        run: |
+          set -euo pipefail
+          if [ "$RUNTIME" = "node" ] || [ "$RUNTIME" = "streamdeck" ]; then
+            [ -f package-lock.json ] || { echo "::error::package-lock.json is not committed; dependency pinning requires an exact, committed lockfile"; exit 1; }
+            npm ci
+          fi
+          if [ "$RUNTIME" = "python" ]; then
+            [ -f requirements.txt ] || { echo "::error::requirements.txt is not committed; dependency pinning requires an exact, committed lockfile"; exit 1; }
+            python -m pip install --disable-pip-version-check -r requirements.txt
+          fi
+          if [ "$RUNTIME" = "go" ]; then
+            [ -f go.mod ] || { echo "::error::go.mod is not committed"; exit 1; }
+            [ -f go.sum ] || { echo "::error::go.sum is not committed; it is the pin mechanism for Go"; exit 1; }
+            go mod download
+            go mod verify
+          fi
+
+      - name: Run the test suite
+        env:
+          TEST_COMMAND: ${{ needs.config.outputs.test_command }}
+        run: |
+          set -euo pipefail
+          echo "Running: $TEST_COMMAND"
+          bash -euo pipefail -c "$TEST_COMMAND"
+
+  # -----------------------------------------------------------------------
+  # Windows lane - runtime: powershell only
+  #
+  # `shell: powershell` is powershell.exe, Windows PowerShell 5.1. `shell: pwsh`
+  # would be PowerShell 7 and would defeat the purpose of this lane.
+  #
+  # Checking the outer host is not enough: a
+  # test_command of `pwsh -Command "Invoke-Pester"` starts PowerShell 7 from
+  # inside a 5.1 host, and the lane would print "5.1" over tests that ran under
+  # 7. So the contract is that a runtime: powershell command names its own
+  # interpreter as `powershell` - on Windows that resolves to powershell.exe,
+  # which is Windows PowerShell 5.1 by definition - and the lane enforces it:
+  #   1. the command's first word must be `powershell` or `powershell.exe`;
+  #   2. the lane runs the very `powershell` that the command will resolve,
+  #      in the same shell, and asserts it reports 5.x and the Desktop edition.
+  # Together those pin the process the tests run in, not just the one that
+  # launched them. STUDY_PS_FLOOR=5.1 is also exported so a repo can assert it
+  # from inside Pester as well (README: "The interpreter contract").
+  # -----------------------------------------------------------------------
+  lint-windows:
+    name: lint (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    needs: config
+    if: needs.config.outputs.runtime == 'powershell'
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: powershell
+    env:
+      STUDY_PS_FLOOR: '5.1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Confirm the host and the command's interpreter are Windows PowerShell 5.1
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSVersionTable | Format-List | Out-String | Write-Host
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSEdition -ne 'Desktop') {
+            Write-Host "::error::this job exists to test the Windows PowerShell 5.1 floor, but the host is"
+            Write-Host "::error::PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))."
+            exit 1
+          }
+          # Resolve `powershell` exactly as a command run from this shell will,
+          # start it, and ask it what it is.
+          $exe = (Get-Command powershell -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          $child = & $exe -NoProfile -NonInteractive -Command '"{0}|{1}" -f $PSVersionTable.PSVersion.Major, $PSVersionTable.PSEdition'
+          Write-Host "'powershell' resolves to $exe and reports $child"
+          if ($child -ne '5|Desktop') {
+            Write-Host "::error::'powershell' on this runner resolves to $exe, which reports $child, not 5|Desktop."
+            exit 1
+          }
+
+      - name: Run the linter
+        env:
+          LINT_COMMAND: ${{ needs.config.outputs.lint_command }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cmd = $env:LINT_COMMAND
+          if ([string]::IsNullOrWhiteSpace($cmd)) {
+            Write-Host "No lint_command is configured; skipping the runtime linter."
+            Write-Host "The workflow linter (actions-lint) and the secret scan still run."
+            exit 0
+          }
+          $first = ($cmd.Trim() -split '\s+', 2)[0]
+          if ($first -notmatch '^(?i)powershell(\.exe)?$') {
+            Write-Host "::error::for runtime: powershell, lint_command must start with 'powershell', so that it"
+            Write-Host "::error::runs under Windows PowerShell 5.1 on this lane. It starts with '$first'."
+            Write-Host "::error::Recommended: powershell -NoProfile -NonInteractive -Command ""Invoke-ScriptAnalyzer -Path . -Recurse -EnableExit"""
+            exit 1
+          }
+          if ($cmd -match '(?i)\bpwsh(\.exe)?\b') {
+            Write-Host "::warning::lint_command also invokes pwsh; whatever it runs through pwsh runs under PowerShell 7, not 5.1."
+          }
+          Write-Host "Running: $cmd"
+          $global:LASTEXITCODE = 0
+          Invoke-Expression $cmd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  test-windows:
+    name: test (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    needs: config
+    if: needs.config.outputs.runtime == 'powershell'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: powershell
+    env:
+      STUDY_PS_FLOOR: '5.1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Confirm the host and the command's interpreter are Windows PowerShell 5.1
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSVersionTable | Format-List | Out-String | Write-Host
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSEdition -ne 'Desktop') {
+            Write-Host "::error::this job exists to test the Windows PowerShell 5.1 floor, but the host is"
+            Write-Host "::error::PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))."
+            exit 1
+          }
+          $exe = (Get-Command powershell -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          $child = & $exe -NoProfile -NonInteractive -Command '"{0}|{1}" -f $PSVersionTable.PSVersion.Major, $PSVersionTable.PSEdition'
+          Write-Host "'powershell' resolves to $exe and reports $child"
+          if ($child -ne '5|Desktop') {
+            Write-Host "::error::'powershell' on this runner resolves to $exe, which reports $child, not 5|Desktop."
+            exit 1
+          }
+
+      - name: Check RequiredModules are pinned
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # RequiredVersion is an exact pin, ModuleVersion is a floor.
+          $psd1 = Get-ChildItem -Path . -Filter *.psd1 -Recurse -Depth 2 -File |
+                  Where-Object { $_.FullName -notmatch '\\\.git\\' } |
+                  Select-Object -First 1
+          if (-not $psd1) {
+            Write-Host "::error::runtime is 'powershell' but no .psd1 module manifest was found."
+            Write-Host "::error::A bare .ps1 ships with a minimal .psd1 and artifact_kind mod."
+            exit 1
+          }
+          Write-Host "Manifest: $($psd1.FullName)"
+          $data = Import-PowerShellDataFile -LiteralPath $psd1.FullName
+          foreach ($required in @($data.RequiredModules)) {
+            if ($null -eq $required) { continue }
+            if ($required -is [string]) {
+              Write-Host "::error::RequiredModules entry '$required' has no RequiredVersion; dependency pinning requires an exact pin, not a floor"
+              exit 1
+            }
+            if (-not $required.RequiredVersion) {
+              Write-Host "::error::RequiredModules entry '$($required.ModuleName)' has no RequiredVersion; dependency pinning requires an exact pin, not a floor"
+              exit 1
+            }
+          }
+          Write-Host "All RequiredModules entries carry an exact RequiredVersion."
+
+      - name: Run the test suite
+        env:
+          TEST_COMMAND: ${{ needs.config.outputs.test_command }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cmd = $env:TEST_COMMAND
+          $first = ($cmd.Trim() -split '\s+', 2)[0]
+          if ($first -notmatch '^(?i)powershell(\.exe)?$') {
+            Write-Host "::error::for runtime: powershell, test_command must start with 'powershell', so that the"
+            Write-Host "::error::tests themselves run under Windows PowerShell 5.1 on this lane. It starts with '$first'."
+            Write-Host "::error::Recommended: powershell -NoProfile -NonInteractive -Command ""Invoke-Pester -CI"""
+            exit 1
+          }
+          if ($cmd -match '(?i)\bpwsh(\.exe)?\b') {
+            Write-Host "::warning::test_command also invokes pwsh; whatever it runs through pwsh runs under PowerShell 7,"
+            Write-Host "::warning::and this lane's 5.1 result does not cover it."
+          }
+          Write-Host "Running: $cmd"
+          $global:LASTEXITCODE = 0
+          Invoke-Expression $cmd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # -----------------------------------------------------------------------
+  # Runtime-independent lanes
+  # -----------------------------------------------------------------------
+  evidence-lint:
+    # Advisory on a branch or PR, blocking at tag time (release.yml step 0), so a
+    # drafted release-evidence.json is checked long before tag day.
+    name: evidence-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate every release-evidence.json in the repo
+        run: |
+          set -euo pipefail
+          CHECKLIST=""
+          for candidate in "${RELEASE_CHECKLIST_PATH:-}" docs/RELEASE-CHECKLIST.md RELEASE-CHECKLIST.md .github/RELEASE-CHECKLIST.md; do
+            if [ -n "$candidate" ] && [ -f "$candidate" ]; then CHECKLIST="$candidate"; break; fi
+          done
+          if [ -z "$CHECKLIST" ]; then
+            echo "::warning::no RELEASE-CHECKLIST.md in this repo; evidence files cannot be checked here."
+            echo "::warning::release.yml step 0 will fail at tag time until one is committed."
+            exit 0
+          fi
+          if [ ! -f "$RELEASE_CONFIG" ]; then
+            echo "::error::$RELEASE_CONFIG is missing; it is the authoritative checklist scope"
+            exit 1
+          fi
+          mapfile -t FILES < <(find docs/releases -type f -name release-evidence.json 2>/dev/null | LC_ALL=C sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No docs/releases/**/release-evidence.json yet; nothing to check."
+            exit 0
+          fi
+          rc=0
+          for f in "${FILES[@]}"; do
+            echo "--- $f"
+            if ! node .github/workflows/scripts/check-release-evidence.mjs \
+                   --checklist "$CHECKLIST" --evidence "$f" --config "$RELEASE_CONFIG"; then
+              echo "::warning file=$f::release evidence is not yet complete (advisory here, blocking at tag time)"
+              rc=1
+            fi
+          done
+          # Advisory on purpose: an in-progress evidence file must not block a PR.
+          if [ "$rc" -ne 0 ]; then
+            echo "One or more evidence files are incomplete. This is a warning on a PR and an error on a tag."
+          fi
+
+  secret-scan:
+    # Release gate 2 evidence: a gitleaks-class scan over full history.
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0          # full history, not just the diff
+          persist-credentials: false
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Comments would need pull-requests: write; the job stays read-only instead.
+          GITLEAKS_ENABLE_COMMENTS: false
+          GITLEAKS_ENABLE_SUMMARY: true
+          # GITLEAKS_LICENSE is required only for repositories owned by an
+          # organization. These repos are owned by a personal account (H1), so no
+          # licence secret is referenced here. If the repos ever move to the
+          # hans-study org, add the secret named GITLEAKS_LICENSE.
+
+  actions-lint:
+    name: actions-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # rhysd/actionlint has no action.yml, so it is installed from its own
+      # installer script at an immutable commit-SHA URL (see the header note).
+      ACTIONLINT_VERSION: '1.7.12'
+      ACTIONLINT_INSTALLER_COMMIT: '914e7df21a07ef503a81201c76d2b11c789d3fca'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          URL="https://raw.githubusercontent.com/rhysd/actionlint/${ACTIONLINT_INSTALLER_COMMIT}/scripts/download-actionlint.bash"
+          echo "Installer: $URL"
+          curl -fsSL --proto '=https' --tlsv1.2 -o /tmp/download-actionlint.bash "$URL"
+          bash /tmp/download-actionlint.bash "$ACTIONLINT_VERSION" /usr/local/bin
+          actionlint --version
+
+      - name: Lint every workflow
+        run: |
+          set -euo pipefail
+          actionlint -color
+
+      - name: Assert every action reference is pinned to a commit SHA
+        run: |
+          set -euo pipefail
+          # Dependency pinning and release gate 5, enforced in the repo rather than
+          # only in the template. A tag or branch reference fails the build.
+          #
+          # The keyword is assembled from a variable rather than written out, so
+          # that this template file itself stays clean for AC4b's recursive grep
+          # over this directory.
+          KEY='uses'
+          BAD="$(grep -rhoE "${KEY}:[[:space:]]*[^[:space:]]+" .github/workflows \
+                 | sed -E "s/.*${KEY}:[[:space:]]*//" \
+                 | grep -vE '@[0-9a-f]{40}$' || true)"
+          if [ -n "$BAD" ]; then
+            echo "::error::these action references are not pinned to a full commit SHA:"
+            printf '%s\n' "$BAD"
+            exit 1
+          fi
+          echo "All action references are pinned to a full commit SHA."

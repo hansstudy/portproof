@@ -1,0 +1,12 @@
+{
+  "schema": "portproof-profile/1",
+  "name": "rdp-winrm",
+  "version": "2026-09-25",
+  "rows": [
+    { "source": "%ADMIN%", "target": "%SERVER%", "port": 3389, "protocol": "TCP", "required": "yes", "service": "Remote Desktop (RDP)", "notes": "" },
+    { "source": "%ADMIN%", "target": "%SERVER%", "port": 5985, "protocol": "TCP", "required": "yes", "service": "WinRM HTTP (WS-Management)", "notes": "" },
+    { "source": "%ADMIN%", "target": "%SERVER%", "port": 5986, "protocol": "TCP", "required": "no", "service": "WinRM HTTPS (WS-Management)", "notes": "The HTTPS listener is not created by winrm quickconfig by default; it requires winrm quickconfig -transport:https and a server authentication certificate" },
+    { "source": "%ADMIN%", "target": "%SERVER%", "port": 80, "protocol": "TCP", "required": "no", "service": "WinRM HTTP compatibility listener", "notes": "Disabled by default (EnableCompatibilityHttpListener = False); only present pre-WinRM 2.0 or when explicitly enabled" },
+    { "source": "%ADMIN%", "target": "%SERVER%", "port": 443, "protocol": "TCP", "required": "no", "service": "WinRM HTTPS compatibility listener", "notes": "Disabled by default (EnableCompatibilityHttpsListener = False); only present pre-WinRM 2.0 or when explicitly enabled" }
+  ]
+}

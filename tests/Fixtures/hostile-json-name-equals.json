@@ -1,0 +1,8 @@
+{
+  "schema": "portproof-profile/1",
+  "name": "=cmd|' /c calc'!A1",
+  "version": "=1+1",
+  "rows": [
+    { "source": "client", "target": "dc01.corp.example", "port": 443, "protocol": "TCP", "required": "yes" }
+  ]
+}

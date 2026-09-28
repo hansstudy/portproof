@@ -1,0 +1,2 @@
+{ "schema": "portproof-profile/1", "name": "x", "groups": { "NET": "10.10.5.5/24" }, "rows": [
+  { "source": "client", "target": "%NET%", "port": 443, "protocol": "TCP", "required": "yes" } ] }

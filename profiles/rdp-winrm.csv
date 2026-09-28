@@ -1,0 +1,6 @@
+Source,Target,Port,Protocol,Required,Service,Notes
+%ADMIN%,%SERVER%,3389,TCP,yes,Remote Desktop (RDP),
+%ADMIN%,%SERVER%,5985,TCP,yes,WinRM HTTP (WS-Management),
+%ADMIN%,%SERVER%,5986,TCP,no,WinRM HTTPS (WS-Management),The HTTPS listener is not created by winrm quickconfig by default; it requires winrm quickconfig -transport:https and a server authentication certificate
+%ADMIN%,%SERVER%,80,TCP,no,WinRM HTTP compatibility listener,Disabled by default (EnableCompatibilityHttpListener = False); only present pre-WinRM 2.0 or when explicitly enabled
+%ADMIN%,%SERVER%,443,TCP,no,WinRM HTTPS compatibility listener,Disabled by default (EnableCompatibilityHttpsListener = False); only present pre-WinRM 2.0 or when explicitly enabled

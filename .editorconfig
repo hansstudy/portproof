@@ -1,0 +1,18 @@
+# PowerShell overlay - replaces the base .editorconfig at instantiation.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+end_of_line = lf
+
+[*.{yml,yaml,json}]
+end_of_line = lf
+indent_size = 2

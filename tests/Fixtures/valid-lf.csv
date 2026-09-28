@@ -1,0 +1,3 @@
+Source,Target,Port,Protocol,Required
+client,dc01.corp.example,389,TCP,yes
+client,dc02.corp.example,636,TCP,no

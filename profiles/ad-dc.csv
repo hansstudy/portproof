@@ -1,0 +1,15 @@
+Source,Target,Port,Protocol,Required,Service,Notes
+%CLIENT%,%DC%,53,TCP,yes,DNS,
+%CLIENT%,%DC%,53,UDP,no,DNS,UDP cannot be proven open by an empty datagram; see Open|Filtered
+%CLIENT%,%DC%,88,TCP,yes,Kerberos,
+%CLIENT%,%DC%,88,UDP,no,Kerberos,UDP cannot be proven open by an empty datagram; see Open|Filtered
+%CLIENT%,%DC%,135,TCP,yes,RPC Endpoint Mapper,Dynamic RPC (the ephemeral high port a service is assigned behind the endpoint mapper) is not proven by this profile; v1 has no port-range syntax
+%CLIENT%,%DC%,389,TCP,yes,LDAP,
+%CLIENT%,%DC%,389,UDP,no,LDAP (DC Locator/ping),UDP cannot be proven open by an empty datagram; see Open|Filtered
+%CLIENT%,%DC%,445,TCP,yes,SMB (SYSVOL/NETLOGON),
+%CLIENT%,%DC%,464,TCP,yes,Kerberos password change,
+%CLIENT%,%DC%,464,UDP,no,Kerberos password change,UDP cannot be proven open by an empty datagram; see Open|Filtered
+%CLIENT%,%DC%,636,TCP,no,LDAP SSL (LDAPS),Requires a server authentication certificate on the DC and is not enabled by default
+%CLIENT%,%DC%,3268,TCP,no,Global Catalog,Only listens where the domain controller holds the Global Catalog role
+%CLIENT%,%DC%,3269,TCP,no,Global Catalog SSL,Depends on both the Global Catalog role and an LDAPS certificate
+%CLIENT%,%DC%,123,UDP,no,W32Time (Windows Time/NTP),UDP cannot be proven open by an empty datagram; see Open|Filtered

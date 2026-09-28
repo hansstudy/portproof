@@ -1,0 +1,7 @@
+{
+  "schema": "portproof-profile/1",
+  "name": "valid-minimal",
+  "rows": [
+    { "source": "client", "target": "dc01.corp.example", "port": 389, "protocol": "TCP", "required": "yes" }
+  ]
+}

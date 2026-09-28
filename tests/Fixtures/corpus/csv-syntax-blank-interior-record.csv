@@ -1,0 +1,4 @@
+Source,Target,Port,Protocol,Required
+client,dc01.corp.example,443,TCP,yes
+,,,,
+client,dc02.corp.example,636,TCP,yes

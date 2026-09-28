@@ -1,0 +1,16 @@
+# Dependency pinning is a release precondition - Dependabot is what keeps pinned SHAs and
+# lockfiles from silently rotting into a stale, un-patchable pin. This file always carries the
+# github-actions entry below. TEMPLATE-README.md step 3a merges a second `updates:` entry from
+# templates/repo-template-overlays/<runtime>/dependabot-fragment.yml into this file's `updates:`
+# list when that fragment exists (currently: node -> npm, go -> gomod). A runtime with no such
+# fragment (powershell, streamdeck, claude-skill without Python scripts) is instantiated with
+# only the github-actions entry below - that is the intended, documented outcome for those
+# runtimes, not a template defect.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"

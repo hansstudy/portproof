@@ -1,0 +1,22 @@
+# Normalize line endings; avoid CRLF/LF diff noise across a Windows-authored, Linux-CI repo.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.psd1 text eol=crlf
+*.psm1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.streamDeckPlugin binary
+
+# Fixtures and golden bytes must survive checkout unmodified on every platform (encoding/EOL
+# vectors, CRLF/LF golden output) - never let Git's own normalisation touch them.
+tests/Fixtures/** -text
+tests/Golden/** -text

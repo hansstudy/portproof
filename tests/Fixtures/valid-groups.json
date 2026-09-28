@@ -1,0 +1,9 @@
+{
+  "schema": "portproof-profile/1",
+  "name": "valid-groups",
+  "version": "2026-09-24",
+  "groups": { "CLIENT": "10.10.1.5", "DC": "dc01.corp.example,dc02.corp.example" },
+  "rows": [
+    { "source": "%CLIENT%", "target": "%DC%", "port": 389, "protocol": "TCP", "required": "yes", "service": "LDAP" }
+  ]
+}

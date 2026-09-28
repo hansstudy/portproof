@@ -1,0 +1,12 @@
+{
+  "schema": "portproof-profile/1",
+  "name": "sql-server",
+  "version": "2026-09-25",
+  "rows": [
+    { "source": "%CLIENT%", "target": "%SQL%", "port": 1433, "protocol": "TCP", "required": "yes", "service": "SQL Server Database Engine (default instance)", "notes": "" },
+    { "source": "%CLIENT%", "target": "%SQL%", "port": 1434, "protocol": "UDP", "required": "no", "service": "SQL Server Browser service", "notes": "UDP cannot be proven open by an empty datagram; see Open|Filtered" },
+    { "source": "%CLIENT%", "target": "%SQL%", "port": 1434, "protocol": "TCP", "required": "no", "service": "Dedicated Admin Connection (default instance)", "notes": "Remote DAC connections are disabled by default; not proven unless an administrator has enabled remote DAC" },
+    { "source": "%CLIENT%", "target": "%SQL%", "port": 4022, "protocol": "TCP", "required": "no", "service": "Service Broker", "notes": "Service Broker has no fixed default port; this row assumes the conventional configuration and is only open when Service Broker is configured" },
+    { "source": "%CLIENT%", "target": "%SQL%", "port": 135, "protocol": "TCP", "required": "no", "service": "RPC (Configuration Manager/WMI/MSDTC/Transact-SQL debugger)", "notes": "Dynamic RPC (the ephemeral high port assigned behind the endpoint mapper) is not proven by this profile; v1 has no port-range syntax" }
+  ]
+}

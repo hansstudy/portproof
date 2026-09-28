@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hans.study/schemas/release-config-1.json",
+  "title": "Release configuration",
+  "description": "The release input contract, committed at .github/release-config.yml in every tool repo and read by ci.yml and release.yml. A tag-triggered workflow cannot take dispatch inputs, so this file is the input surface - which also makes every change to it reviewable in a pull request. This schema is for editors and reviewers only: the workflows read the file with yq, and check-release-evidence.mjs reads two keys out of it with a deliberately tiny reader that has no schema support, because it must stay dependency-free. Two rules this schema cannot express are enforced there instead, and both are hard errors: a top-level key declared twice, and a quoted scalar that does not close on its own line.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool_slug",
+    "product_name",
+    "artifact_kind",
+    "artifact_kinds",
+    "runtime",
+    "test_command",
+    "sbom"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Shape of this document. release.yml refuses anything but 1.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool_slug": {
+      "description": "Must equal the repository name. The join key across repo, landing page and package name; release.yml fails if it does not match.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "product_name": {
+      "description": "Display name, used as the GitHub Release title.",
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_kind": {
+      "description": "What this repo ships. A bare .ps1 script is `mod`: it ships with a minimal .psd1 rather than getting a sixth tag.",
+      "enum": ["bin", "mod", "plg", "skl", "web"]
+    },
+    "artifact_kinds": {
+      "description": "The authoritative release-checklist scope: every applicability tag this repo claims, which is artifact_kind plus `prod` when the tool executes against production directory services, domain controllers or access-control panels. It lives here, in a file reviewed in a pull request, and not only in the evidence file, because a scope that can be narrowed on release day is not a control. The evidence file must restate the same list.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["bin", "mod", "plg", "skl", "web", "prod"] }
+    },
+    "runtime": {
+      "description": "Decides which toolchain is set up, which pin mechanism is checked, and - for `powershell` - which operating system CI runs on. `powershell` routes lint and test to windows-latest under Windows PowerShell 5.1; the release job stays on ubuntu for every runtime.",
+      "enum": ["powershell", "node", "python", "go", "streamdeck", "claude-skill", "none"]
+    },
+    "landing_url": {
+      "description": "https://hans.study/tools/<slug>/ - the canonical landing page.",
+      "type": "string"
+    },
+    "dist_dir": {
+      "description": "Where the build leaves its artifacts. Defaults to `dist`. Must be a relative path with no leading slash and no .. segment, and its contents must be flat files: a subdirectory fails the build, because the artifacts output, SHA256SUMS and the attestation subject glob must describe the same set. A cross-compiled Go build puts one archive per target at the root, named <slug>_<version>_<os>_<arch>.tar.gz (.zip for windows).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+      "default": "dist"
+    },
+    "build_command": {
+      "description": "Empty means the repo has already produced dist_dir.",
+      "type": "string"
+    },
+    "test_command": {
+      "description": "Empty FAILS the release. Release gate 2 has no opt-out.",
+      "type": "string",
+      "minLength": 1
+    },
+    "lint_command": {
+      "description": "Optional. Empty means the runtime linter is skipped with a message; the workflow linter and the secret scan still run.",
+      "type": "string"
+    },
+    "licence": {
+      "description": "SPDX id. Required when sbom.generator is `psd1`, which writes it into the SBOM. There is no default: per-project licence exceptions are allowed, so a document asserting Apache-2.0 for a repo that is not Apache-2.0 would be worse than a failed build.",
+      "type": "string"
+    },
+    "sbom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator"],
+      "properties": {
+        "generator": {
+          "description": "cyclonedx-gomod runs `cyclonedx-gomod mod`, reading go.mod rather than a built binary - the right shape for a cross-compiled release, where one SBOM describes the module and not one of the per-platform archives.",
+          "enum": ["cyclonedx-npm", "cyclonedx-py", "cyclonedx-gomod", "psd1", "manual"]
+        },
+        "manual_path": {
+          "description": "Required when generator is `manual`. A relative path with no .. segment.",
+          "type": "string"
+        }
+      }
+    },
+    "publish": {
+      "description": "One boolean per channel, plus the optional per-channel parameters the publish jobs need. Every parameter is optional: absent, the workflow derives it and fails with an explicit message naming the key if it cannot.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "psgallery": { "type": "boolean", "default": false },
+        "psgallery_module_name": {
+          "description": "Defaults to the base name of the single .psd1 in the repo.",
+          "type": "string"
+        },
+        "psgallery_module_path": {
+          "description": "A DIRECTORY, not the .psd1 file itself: the job builds <path>/<module_name>.psd1 and hands the directory to Publish-PSResource -Path, which takes a module folder. Defaults to the directory holding the single .psd1.",
+          "type": "string"
+        },
+        "scoop": { "type": "boolean", "default": false },
+        "scoop_bucket_repo": {
+          "description": "Defaults to <owner>/scoop-study.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"
+        },
+        "scoop_artifact": {
+          "description": "Defaults to <slug>-<version>.zip.",
+          "type": "string"
+        },
+        "winget": { "type": "boolean", "default": false },
+        "winget_package_id": {
+          "description": "Publisher.PackageName. Required when winget is enabled; winget accepts only .exe and MSI installers, so the job also refuses to run unless artifact_kind is `bin`.",
+          "type": "string"
+        },
+        "winget_installer_artifact": {
+          "description": "Required when winget is enabled.",
+          "type": "string"
+        },
+        "elgato_pack": {
+          "description": "Packs and attaches the .streamDeckPlugin; the Marketplace submission stays a manual Maker Console step.",
+          "type": "boolean",
+          "default": false
+        },
+        "streamdeck_plugin_dir": {
+          "description": "Defaults to the single *.sdPlugin directory.",
+          "type": "string"
+        },
+        "claude_validate": { "type": "boolean", "default": false },
+        "claude_skill_dir": {
+          "description": "Defaults to the directory holding the single SKILL.md.",
+          "type": "string"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "sbom": { "properties": { "generator": { "const": "manual" } }, "required": ["generator"] } },
+        "required": ["sbom"]
+      },
+      "then": {
+        "properties": { "sbom": { "required": ["generator", "manual_path"] } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "sbom": { "properties": { "generator": { "const": "psd1" } }, "required": ["generator"] } },
+        "required": ["sbom"]
+      },
+      "then": {
+        "description": "The psd1 SBOM generator writes the licence into the document a procurement reviewer reads, so it must be stated rather than assumed.",
+        "required": ["licence"]
+      }
+    }
+  ]
+}
