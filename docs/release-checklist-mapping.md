@@ -81,7 +81,7 @@ see "Decisions recorded" below.
   vocabulary has no `script` kind and hard-fails a `runtime: powershell` release with no `.psd1`.
   `artifact_kind: "mod"` is declared and `PortProof.psd1` is a minimal manifest with
   no `RootModule`, no exports, and no `RequiredModules` key at all. `PortProof.psd1` is the only
-  `.psd1` within three directory levels (AC35).
+  `.psd1` within three directory levels.
 - **`test_command` form, and why it starts with `powershell`.** The CI pipeline's Windows test and
   lint lanes refuse any `test_command`/`lint_command` whose first word is not
   `powershell`/`powershell.exe`, and the release job installs a `powershell` -> `pwsh` shim on

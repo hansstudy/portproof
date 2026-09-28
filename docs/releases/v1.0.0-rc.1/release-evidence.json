@@ -55,8 +55,8 @@
     },
     {
       "id": "G10-changelog-entry",
-      "status": "fail",
-      "reason": "Pending: CHANGELOG.md has '## [1.0.0] - 2026-09-25' but no dated '## [1.0.0-rc.1] - YYYY-MM-DD' section. release.yml step 7 builds the GitHub Release notes from the section matching the tag's version, so the release would also fail there without it. Owner: Maintainer, on release day."
+      "status": "pass",
+      "evidence": "CHANGELOG.md '## [1.0.0-rc.1] - 2026-09-28' section (Keep a Changelog, dated, with tag link); `node .github/workflows/scripts/changelog-section.mjs --version 1.0.0-rc.1` extracts it (exit 0), which is what release.yml step 7 uses for the release notes"
     },
     {
       "id": "G11-semver-consistent",
@@ -66,7 +66,7 @@
     {
       "id": "G12-screenshots-demo",
       "status": "fail",
-      "reason": "Pending: docs/samples/matrix.png, console.txt and the sample HTML/CSV/JSON exist and are lab-data-only, but the demo GIF (docs/samples/run.gif, linked from README.md) does not exist yet (docs/samples/README.md records 'run.gif: Not provided'). Screenshots now being added still need the lab-data-only review. Owner: Maintainer."
+      "reason": "Pending: docs/samples/matrix.png, console.txt and the sample HTML/CSV/JSON exist and are lab-data-only; a demo GIF (docs/samples/run.gif) and screenshots under docs/screenshots/ were added on 2026-09-28 and are still being revised, so they have not yet been reviewed and recorded as current and lab-data-only. Owner: Maintainer, once the screenshot work is final."
     },
     {
       "id": "G13-docs-links",
