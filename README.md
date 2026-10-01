@@ -2,6 +2,10 @@
 
 Prove a firewall rule set is open before the vendor arrives.
 
+A single PowerShell script (Windows PowerShell 5.1, or PowerShell 7.4 and later) that probes a
+declared source-to-target-to-port list and returns a pass/fail matrix and an exit code a change
+window can gate on.
+
 *by Hans Study — [hans.study/tools/portproof/](https://hans.study/tools/portproof/)*
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/hansstudy/portproof/releases/tag/v1.0.0)
