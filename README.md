@@ -433,7 +433,7 @@ reconstructed after the fact. See [`docs/content-provenance.md`](docs/content-pr
 
 This is published as working software, not as a supported product. Issues and pull requests are
 read and are usually answered within a week. There is no SLA. If you need this run, tuned, or
-backed by a person, that is consulting work - [start here](https://hans.study/start-an-engagement/).
+backed by a person, that is consulting work - see the [firewall review](https://hans.study/firewall-review/) service or [start here](https://hans.study/start-an-engagement/).
 
 ## Telemetry
 
