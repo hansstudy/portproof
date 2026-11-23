@@ -368,7 +368,7 @@ jobs:
       # patch release on https://go.dev/dl/?mode=json on 2026-09-24.
       - name: Step 1b - set up the Go toolchain for the SBOM generator
         if: steps.cfg.outputs.sbom_generator == 'cyclonedx-gomod'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: '1.26.8'      # GO_FOR_SBOM_TOOL; >= cyclonedx-gomod v1.12.0's `go 1.26.0`
           cache: false              # a release build never restores a cache; see the next step
@@ -390,7 +390,7 @@ jobs:
 
       - name: Step 1b - set up Go for this module
         if: steps.cfg.outputs.runtime == 'go' || steps.cfg.outputs.sbom_generator == 'cyclonedx-gomod'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod   # the toolchain version is pinned by the module itself
           # No cache in the release job. setup-go
